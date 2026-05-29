@@ -2,13 +2,14 @@ const {
     Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder,
     ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
     PermissionFlagsBits, ChannelType, REST, Routes, SlashCommandBuilder,
-    ModalBuilder, TextInputBuilder, TextInputStyle, Events
+    ModalBuilder, TextInputBuilder, TextInputStyle
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
+const cors = require('cors');
 require('dotenv').config();
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
@@ -24,7 +25,6 @@ const REQUEST_CATEGORY_ID  = config.requestCategoryId  || '1509830979009773618';
 const APPEAL_CATEGORY_ID   = config.appealCategoryId   || '1508084800106528828';
 const LOG_CHANNEL_ID       = config.logChannelId       || '1509832784880074782';
 const NOWPAYMENTS_API      = 'https://api.nowpayments.io/v1';
-const WEBHOOK_URL          = config.webhookUrl         || '';
 
 // ─── DATA FILES ───────────────────────────────────────────────────────────────
 function loadJSON(file, fallback) {
@@ -127,7 +127,7 @@ const commands = [
             .addChoices({ name: '1 Month', value: '1month' }, { name: 'Lifetime', value: 'lifetime' })),
     new SlashCommandBuilder()
         .setName('stock')
-        .setDescription('Check stock (placeholder)'),
+        .setDescription('Check stock'),
     new SlashCommandBuilder()
         .setName('whitelist')
         .setDescription('Check your whitelist status'),
@@ -174,7 +174,6 @@ client.once('ready', async () => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // ── Anti-Link / Anti-Discord-Invite ──────────────────────────────────────
     const isInvite = /discord\.(gg|com\/invite)\/[a-zA-Z0-9]+/i.test(message.content);
     const isLink = /https?:\/\/(?!tenor\.com|giphy\.com|media\.tenor\.com|media\.giphy\.com)[^\s]+/i.test(message.content);
 
@@ -186,7 +185,6 @@ client.on('messageCreate', async (message) => {
     if ((isInvite || isLink) && !hasModRole && !hasAdmRole && !isAdmin) {
         try {
             await message.delete();
-            const timeoutUntil = new Date(Date.now() + 10 * 60 * 1000);
             await message.member.timeout(10 * 60 * 1000, 'Auto: link/invite detected');
 
             const dmEmbed = new EmbedBuilder()
@@ -206,7 +204,6 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // ── Prefix commands ───────────────────────────────────────────────────────
     if (message.content.startsWith('!ticket')) {
         const sub = message.content.split(' ')[1]?.toLowerCase();
         if (sub === 'support') return createTicketPanel(message, 'support');
@@ -218,7 +215,6 @@ client.on('messageCreate', async (message) => {
         return createRequestPanel(message);
     }
 
-    // ── Mod commands ──────────────────────────────────────────────────────────
     if (message.content.startsWith('.timeout ')) {
         if (!hasModRole && !hasAdmRole && !isAdmin) return;
         const parts = message.content.split(' ');
@@ -254,7 +250,7 @@ client.on('messageCreate', async (message) => {
                 .addFields(
                     { name: 'Server', value: message.guild.name, inline: true },
                     { name: 'Reason', value: reason, inline: true },
-                    { name: 'Want to appeal?', value: 'Open a ticket to appeal your ban: https://discord.gg/ryEFfkJwb7\nJoin the server and open a ticket to appeal.' }
+                    { name: 'Want to appeal?', value: 'Open a ticket to appeal your ban.' }
                 )
                 .setTimestamp();
             await targetUser.send({ embeds: [banEmbed] }).catch(() => {});
@@ -379,12 +375,10 @@ async function createRequestPanel(message) {
     await message.delete().catch(() => {});
 }
 
-// ─── TICKET CREATION ──────────────────────────────────────────────────────────
 async function handleTicketCreation(interaction) {
     const type = interaction.customId.replace('create_ticket_', '');
     const userId = interaction.user.id;
 
-    // For request type: show modal first
     if (type === 'request') {
         const modal = new ModalBuilder()
             .setCustomId('request_modal')
@@ -440,7 +434,6 @@ async function handleTicketCreation(interaction) {
         .setCustomId(`close_ticket_${ticketChannel.id}`)
         .setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Danger);
 
-    // Ping roles based on type
     let pingContent = `${interaction.user} `;
     if (type === 'support') pingContent += `<@&${MOD_ROLE_ID}> <@&${ADMIN_ROLE_ID}>`;
     if (type === 'buy')     pingContent += `<@&${BUY_PING_ROLE_ID}>`;
@@ -514,7 +507,6 @@ async function handleRequestModal(interaction) {
     });
 }
 
-// ─── BUY TICKET ───────────────────────────────────────────────────────────────
 async function handleBuyTicketAutoResponse(channel, user) {
     const embed = new EmbedBuilder()
         .setColor('#FEE75C')
@@ -534,7 +526,6 @@ async function handleBuyTicketAutoResponse(channel, user) {
     await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
 }
 
-// ─── PAYMENT ──────────────────────────────────────────────────────────────────
 async function handleDurationSelect(interaction) {
     const [duration, priceStr] = interaction.values[0].split('_');
     const priceUSD = parseFloat(priceStr);
@@ -579,8 +570,8 @@ async function handleDurationSelect(interaction) {
             .setCustomId(`check_payment_${payment.payment_id}`)
             .setLabel('🔄 Zahlung prüfen').setStyle(ButtonStyle.Primary);
 
-        const msg = await interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(checkBtn)] });
-        startPaymentMonitoring(payment.payment_id, interaction.channel.id, msg.id);
+        await interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(checkBtn)] });
+        startPaymentMonitoring(payment.payment_id, interaction.channel.id);
 
         await logAction(client, 'PAYMENT', {
             'User': `${interaction.user.tag}`,
@@ -612,7 +603,7 @@ async function checkPaymentStatus(interaction, paymentId) {
     }
 }
 
-function startPaymentMonitoring(paymentId, channelId, messageId) {
+function startPaymentMonitoring(paymentId, channelId) {
     if (paymentMonitors.has(paymentId)) clearInterval(paymentMonitors.get(paymentId));
     const iv = setInterval(async () => {
         try {
@@ -668,7 +659,6 @@ function generateKey() {
     return crypto.randomBytes(16).toString('hex').toUpperCase().match(/.{1,4}/g).join('-');
 }
 
-// ─── KEY COMMANDS ─────────────────────────────────────────────────────────────
 async function handleRedeemCommand(interaction) {
     const keyInput = interaction.options.getString('key');
     const userId = interaction.user.id;
@@ -778,7 +768,6 @@ async function handleRemoveCooldownCommand(interaction) {
     await interaction.editReply({ content: '✅ Cooldowns sind derzeit nicht aktiv.' });
 }
 
-// ─── TICKET CLOSE ─────────────────────────────────────────────────────────────
 async function handleTicketClose(interaction) {
     const channelId = interaction.customId.replace('close_ticket_', '');
     const channel = interaction.guild.channels.cache.get(channelId);
@@ -799,7 +788,6 @@ async function handleTicketClose(interaction) {
     setTimeout(() => channel.delete().catch(() => {}), 5000);
 }
 
-// ─── SUBSCRIPTION EXPIRY ──────────────────────────────────────────────────────
 async function checkExpiredSubscriptions() {
     const now = Date.now(); let changed = false;
     for (const sub of keysData.subscriptions) {
@@ -816,7 +804,6 @@ async function checkExpiredSubscriptions() {
     if (changed) saveKeys();
 }
 
-// ─── GIVEAWAY ─────────────────────────────────────────────────────────────────
 function parseDuration(str) {
     const match = str.match(/^(\d+)(s|m|h|d)$/);
     if (!match) return null;
@@ -915,16 +902,25 @@ async function checkGiveaways() {
     }
 }
 
-// ─── EXPRESS WEB DASHBOARD ────────────────────────────────────────────────────
+// ─── EXPRESS WEB DASHBOARD WITH CORS ─────────────────────────────────────────
 const appExpress = express();
+
 appExpress.use(express.json());
-appExpress.use(express.static(path.join(__dirname, 'public')));
+appExpress.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type']
+}));
 
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin123';
 
+// API Routes
 appExpress.post('/api/auth', (req, res) => {
-    if (req.body.password === DASHBOARD_PASSWORD) res.json({ ok: true, token: Buffer.from(DASHBOARD_PASSWORD).toString('base64') });
-    else res.status(401).json({ ok: false });
+    if (req.body.password === DASHBOARD_PASSWORD) {
+        res.json({ ok: true, token: Buffer.from(DASHBOARD_PASSWORD).toString('base64') });
+    } else {
+        res.status(401).json({ ok: false });
+    }
 });
 
 function authMiddleware(req, res, next) {
@@ -992,8 +988,10 @@ appExpress.post('/api/send', authMiddleware, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+appExpress.options('*', cors());
+
 const PORT = process.env.PORT || 3000;
-appExpress.listen(PORT, () => console.log(`🌐 Dashboard auf http://localhost:${PORT}`));
+appExpress.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard API auf Port ${PORT}`));
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 client.login(process.env.DISCORD_TOKEN);
