@@ -1,0 +1,37 @@
+{
+  "logs": [
+    {
+      "id": "add0555c23c2",
+      "type": "TICKET_CLOSE",
+      "timestamp": 1780044674906,
+      "Closed by": "exuberant_fawn_04943",
+      "Channel": "ticket-buy-7132",
+      "Type": "buy"
+    },
+    {
+      "id": "d01a8bda489f",
+      "type": "TICKET_OPEN",
+      "timestamp": 1780044666819,
+      "User": "exuberant_fawn_04943 (1482300597935013968)",
+      "Type": "buy",
+      "Channel": "ticket-buy-7132"
+    },
+    {
+      "id": "3e9033915a2c",
+      "type": "TICKET_CLOSE",
+      "timestamp": 1780044310419,
+      "Closed by": "exuberant_fawn_04943",
+      "Channel": "request-exuberant_fawn_04943-1755",
+      "Type": "request"
+    },
+    {
+      "id": "051fa863b221",
+      "type": "TICKET_OPEN",
+      "timestamp": 1780044303365,
+      "User": "exuberant_fawn_04943",
+      "Type": "Game Request",
+      "Game": "sab script",
+      "Channel": "request-exuberant_fawn_04943-1755"
+    }
+  ]
+}

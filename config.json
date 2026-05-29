@@ -1,0 +1,13 @@
+{
+  "adminUserIds": ["1436220760304652338", "1482300597935013968"],
+  "modRoleId": "1509827018513186866",
+  "adminRoleId": "1509827044345774111",
+  "buyPingRoleId": "1509826896756736000",
+  "supportCategoryId": "1509830957304381450",
+  "buyCategoryId": "1509830769969729647",
+  "requestCategoryId": "1509830979009773618",
+  "appealCategoryId": "1508084800106528828",
+  "logChannelId": "1509832784880074782",
+  "ticketPrefix": "ticket-",
+  "webhookUrl": ""
+}
