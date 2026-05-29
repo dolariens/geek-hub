@@ -9,7 +9,6 @@ const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
-const cors = require('cors');
 require('dotenv').config();
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
@@ -902,15 +901,21 @@ async function checkGiveaways() {
     }
 }
 
-// ─── EXPRESS WEB DASHBOARD WITH CORS ─────────────────────────────────────────
+// ─── EXPRESS WEB DASHBOARD (OHNE cors package - manuelles CORS) ───────────────
 const appExpress = express();
 
 appExpress.use(express.json());
-appExpress.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type']
-}));
+
+// Manuelles CORS (funktioniert ohne extra Package)
+appExpress.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin123';
 
@@ -987,8 +992,6 @@ appExpress.post('/api/send', authMiddleware, async (req, res) => {
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-appExpress.options('*', cors());
 
 const PORT = process.env.PORT || 3000;
 appExpress.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard API auf Port ${PORT}`));
