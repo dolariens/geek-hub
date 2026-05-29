@@ -74,7 +74,7 @@ async function logAction(client, type, data) {
             KICK: '#FF6B35', TICKET_OPEN: '#5865F2', TICKET_CLOSE: '#EB459E',
             PAYMENT: '#00FF00', KEY_REDEEM: '#57F287', WHITELIST: '#57F287',
             UNWHITELIST: '#ED4245', LINK_DELETE: '#FF6B35', GIVEAWAY: '#FFD700',
-            MOD_MSG: '#5865F2'
+            MOD_MSG: '#5865F2', SCRIPT_REQUEST: '#57F287'
         };
 
         const embed = new EmbedBuilder()
@@ -188,8 +188,8 @@ client.on('messageCreate', async (message) => {
 
             const dmEmbed = new EmbedBuilder()
                 .setColor('#ED4245')
-                .setTitle('🔇 Du wurdest getimed out')
-                .setDescription(`**Grund:** Unerlaubter Link / Discord Invite\n**Dauer:** 10 Minuten`)
+                .setTitle('🔇 You have been timed out')
+                .setDescription(`**Reason:** Unauthorized link / Discord invite\n**Duration:** 10 minutes`)
                 .setTimestamp();
             await message.author.send({ embeds: [dmEmbed] }).catch(() => {});
 
@@ -347,8 +347,8 @@ client.on('interactionCreate', async (interaction) => {
 // ─── TICKET PANELS ────────────────────────────────────────────────────────────
 async function createTicketPanel(message, type) {
     const data = {
-        support: { color: '#5865F2', title: '🎫 Support Ticket System', desc: 'Klicke den Button um ein Support Ticket zu öffnen.\nUnser Team hilft dir so schnell wie möglich.' },
-        buy:     { color: '#FEE75C', title: '💰 Buy Ticket System',     desc: 'Klicke den Button um ein Kauf-Ticket zu öffnen.\nWähle dein Paket und erhalte sofort Zahlungsinformationen.' }
+        support: { color: '#5865F2', title: '🎫 Support Ticket System', desc: 'Click the button to open a support ticket.\nOur team will help you as soon as possible.' },
+        buy:     { color: '#FEE75C', title: '💰 Buy Ticket System',     desc: 'Click the button to open a purchase ticket.\nChoose your package and get payment information instantly.' }
     };
     const d = data[type];
     const embed = new EmbedBuilder().setColor(d.color).setTitle(d.title).setDescription(d.desc).setTimestamp();
@@ -363,12 +363,12 @@ async function createTicketPanel(message, type) {
 async function createRequestPanel(message) {
     const embed = new EmbedBuilder()
         .setColor('#57F287')
-        .setTitle('🎮 Game Request')
-        .setDescription('Klicke den Button und schlage ein Spiel vor!\nUnser Team wird deinen Vorschlag prüfen.')
+        .setTitle('📜 Script Request')
+        .setDescription('Click the button to request a script!\nOur team will review your request.')
         .setTimestamp();
     const btn = new ButtonBuilder()
         .setCustomId('create_ticket_request')
-        .setLabel('🎮 Spiel vorschlagen')
+        .setLabel('📜 Request Script')
         .setStyle(ButtonStyle.Success);
     await message.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
     await message.delete().catch(() => {});
@@ -382,25 +382,25 @@ async function handleTicketCreation(interaction) {
     if (type === 'request') {
         const modal = new ModalBuilder()
             .setCustomId('request_modal')
-            .setTitle('🎮 Game Request');
+            .setTitle('📜 Script Request');
         const input = new TextInputBuilder()
-            .setCustomId('game_name')
-            .setLabel('Welches Spiel möchtest du vorschlagen?')
+            .setCustomId('script_name')
+            .setLabel('What script would you like to request?')
             .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder('z.B. Minecraft, GTA V, Apex Legends...')
+            .setPlaceholder('e.g., Auto farm script, GUI script, Executor...')
             .setRequired(true);
         modal.addComponents(new ActionRowBuilder().addComponents(input));
         return interaction.showModal(modal);
     }
 
     const existing = Array.from(activeTickets.values()).find(t => t.userId === userId && t.type === type);
-    if (existing) return interaction.reply({ content: '❌ Du hast bereits ein offenes Ticket dieses Typs!', flags: 64 });
+    if (existing) return interaction.reply({ content: '❌ You already have an open ticket of this type!', flags: 64 });
 
     await interaction.deferReply({ flags: 64 });
 
     const catId = type === 'support' ? SUPPORT_CATEGORY_ID : BUY_CATEGORY_ID;
     const category = interaction.guild.channels.cache.get(catId);
-    if (!category) return interaction.editReply({ content: '❌ Kategorie nicht gefunden!' });
+    if (!category) return interaction.editReply({ content: '❌ Category not found!' });
 
     const num = Math.floor(Math.random() * 9000) + 1000;
     const channelName = `ticket-${type}-${num}`;
@@ -425,8 +425,8 @@ async function handleTicketCreation(interaction) {
     const colors = { support: '#5865F2', buy: '#FEE75C' };
     const welcomeEmbed = new EmbedBuilder()
         .setColor(colors[type])
-        .setTitle(type === 'support' ? '🎫 Support Ticket' : '💰 Kauf Ticket')
-        .setDescription(`Willkommen ${interaction.user}!\n\n${type === 'support' ? 'Beschreibe dein Problem und ein Teammitglied wird dir helfen.' : 'Wähle dein gewünschtes Paket aus.'}`)
+        .setTitle(type === 'support' ? '🎫 Support Ticket' : '💰 Purchase Ticket')
+        .setDescription(`Welcome ${interaction.user}!\n\n${type === 'support' ? 'Please describe your issue and a team member will help you.' : 'Please select your desired package.'}`)
         .setFooter({ text: `Ticket #${num}` })
         .setTimestamp();
 
@@ -442,7 +442,7 @@ async function handleTicketCreation(interaction) {
 
     if (type === 'buy') await handleBuyTicketAutoResponse(ticketChannel, interaction.user);
 
-    await interaction.editReply({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}` });
+    await interaction.editReply({ content: `✅ Your ticket has been created: ${ticketChannel}` });
 
     await logAction(client, 'TICKET_OPEN', {
         'User': `${interaction.user.tag} (${interaction.user.id})`,
@@ -451,13 +451,13 @@ async function handleTicketCreation(interaction) {
 }
 
 async function handleRequestModal(interaction) {
-    const gameName = interaction.fields.getTextInputValue('game_name');
+    const scriptName = interaction.fields.getTextInputValue('script_name');
     const userId = interaction.user.id;
 
     await interaction.deferReply({ flags: 64 });
 
     const category = interaction.guild.channels.cache.get(REQUEST_CATEGORY_ID);
-    if (!category) return interaction.editReply({ content: '❌ Kategorie nicht gefunden!' });
+    if (!category) return interaction.editReply({ content: '❌ Category not found!' });
 
     const num = Math.floor(Math.random() * 9000) + 1000;
     const channelName = `request-${interaction.user.username}-${num}`;
@@ -481,9 +481,9 @@ async function handleRequestModal(interaction) {
 
     const embed = new EmbedBuilder()
         .setColor('#57F287')
-        .setTitle('🎮 Game Request')
-        .setDescription(`${interaction.user} möchte ein Spiel vorschlagen!`)
-        .addFields({ name: '🎮 Gewünschtes Spiel', value: gameName })
+        .setTitle('📜 Script Request')
+        .setDescription(`${interaction.user} wants to request a script!`)
+        .addFields({ name: '📜 Requested Script', value: scriptName })
         .setFooter({ text: `Request #${num}` })
         .setTimestamp();
 
@@ -497,12 +497,12 @@ async function handleRequestModal(interaction) {
         components: [new ActionRowBuilder().addComponents(closeBtn)]
     });
 
-    await interaction.editReply({ content: `✅ Dein Game Request wurde erstellt: ${ticketChannel}` });
+    await interaction.editReply({ content: `✅ Your script request has been created: ${ticketChannel}` });
 
-    await logAction(client, 'TICKET_OPEN', {
+    await logAction(client, 'SCRIPT_REQUEST', {
         'User': `${interaction.user.tag}`,
-        'Type': 'Game Request',
-        'Game': gameName,
+        'Type': 'Script Request',
+        'Script': scriptName,
         'Channel': channelName
     });
 }
@@ -510,17 +510,17 @@ async function handleRequestModal(interaction) {
 async function handleBuyTicketAutoResponse(channel, user) {
     const embed = new EmbedBuilder()
         .setColor('#FEE75C')
-        .setTitle('⏱️ Paket auswählen')
-        .setDescription('Wähle dein gewünschtes Paket:\n\n**1 Month** — $5.00\n**Lifetime** — $15.00')
-        .setFooter({ text: 'Zahlungsinformationen werden sofort nach der Auswahl angezeigt' })
+        .setTitle('⏱️ Select Package')
+        .setDescription('Choose your desired package:\n\n**1 Month** — $5.00\n**Lifetime** — $15.00')
+        .setFooter({ text: 'Payment information will be shown immediately after selection' })
         .setTimestamp();
 
     const select = new StringSelectMenuBuilder()
         .setCustomId('duration_select')
-        .setPlaceholder('Paket auswählen')
+        .setPlaceholder('Select package')
         .addOptions([
-            { label: '1 Month — $5.00', description: '1 Monat Zugang', value: '1month_5', emoji: '📅' },
-            { label: 'Lifetime — $15.00', description: 'Lebenslanger Zugang', value: 'lifetime_15', emoji: '♾️' },
+            { label: '1 Month — $5.00', description: '1 Month access', value: '1month_5', emoji: '📅' },
+            { label: 'Lifetime — $15.00', description: 'Lifetime access', value: 'lifetime_15', emoji: '♾️' },
         ]);
 
     await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
@@ -556,19 +556,19 @@ async function handleDurationSelect(interaction) {
 
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
-            .setTitle('💰 Litecoin Zahlung')
-            .setDescription(`**Paket:** ${durationText}\n**Preis:** $${priceUSD.toFixed(2)} USD\n\nBitte sende **${ltcAmount} LTC** an folgende Adresse:`)
+            .setTitle('💰 Litecoin Payment')
+            .setDescription(`**Package:** ${durationText}\n**Price:** $${priceUSD.toFixed(2)} USD\n\nPlease send **${ltcAmount} LTC** to the following address:`)
             .addFields(
-                { name: '📍 LTC Adresse', value: `\`\`\`${payment.pay_address}\`\`\``, inline: false },
-                { name: '💵 Betrag', value: `**${ltcAmount} LTC**`, inline: true },
+                { name: '📍 LTC Address', value: `\`\`\`${payment.pay_address}\`\`\``, inline: false },
+                { name: '💵 Amount', value: `**${ltcAmount} LTC**`, inline: true },
                 { name: '💲 USD', value: `$${priceUSD.toFixed(2)}`, inline: true },
-                { name: '📊 Status', value: '⏳ Warte auf Zahlung...', inline: false }
+                { name: '📊 Status', value: '⏳ Waiting for payment...', inline: false }
             )
-            .setFooter({ text: 'Genau diesen Betrag senden!' }).setTimestamp();
+            .setFooter({ text: 'Send exactly this amount!' }).setTimestamp();
 
         const checkBtn = new ButtonBuilder()
             .setCustomId(`check_payment_${payment.payment_id}`)
-            .setLabel('🔄 Zahlung prüfen').setStyle(ButtonStyle.Primary);
+            .setLabel('🔄 Check Payment').setStyle(ButtonStyle.Primary);
 
         await interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(checkBtn)] });
         startPaymentMonitoring(payment.payment_id, interaction.channel.id);
@@ -582,7 +582,7 @@ async function handleDurationSelect(interaction) {
         });
     } catch (e) {
         console.error('Payment error:', e.response?.data || e.message);
-        await interaction.editReply({ content: '❌ Fehler beim Erstellen der Zahlung. Bitte einen Admin kontaktieren.' });
+        await interaction.editReply({ content: '❌ Error creating payment. Please contact an admin.' });
     }
 }
 
@@ -599,7 +599,7 @@ async function checkPaymentStatus(interaction, paymentId) {
             if (session) await processSuccessfulPayment(interaction.channel, session);
         }
     } catch (e) {
-        await interaction.editReply({ content: '❌ Fehler beim Prüfen.' });
+        await interaction.editReply({ content: '❌ Error checking payment.' });
     }
 }
 
@@ -631,21 +631,21 @@ async function processSuccessfulPayment(channel, sessionData) {
     keysData.keys.push({ key, userId: sessionData.userId, guildId: sessionData.guildId, duration: sessionData.duration, durationMs: sessionData.durationMs, expiresAt, createdAt: Date.now(), redeemed: false });
     saveKeys();
 
-    const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Zahlung bestätigt!').setDescription('Dein Schlüssel wurde per DM gesendet.').setTimestamp();
+    const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Payment Confirmed!').setDescription('Your key has been sent via DM.').setTimestamp();
     await channel.send({ embeds: [embed] });
 
     try {
         const user = await client.users.fetch(sessionData.userId);
         const keyEmbed = new EmbedBuilder()
-            .setColor('#00FF00').setTitle('🔑 Dein Key')
-            .setDescription(`\`\`\`${key}\`\`\`\n\nBenutze \`/redeem ${key}\` um den Key einzulösen.`)
+            .setColor('#00FF00').setTitle('🔑 Your Key')
+            .setDescription(`\`\`\`${key}\`\`\`\n\nUse \`/redeem ${key}\` to redeem your key.`)
             .addFields(
-                { name: '⏱️ Paket', value: sessionData.duration === '1month' ? '1 Month' : 'Lifetime', inline: true },
-                { name: '📅 Gültig bis', value: `<t:${Math.floor(expiresAt / 1000)}:F>`, inline: true }
+                { name: '⏱️ Package', value: sessionData.duration === '1month' ? '1 Month' : 'Lifetime', inline: true },
+                { name: '📅 Expires', value: `<t:${Math.floor(expiresAt / 1000)}:F>`, inline: true }
             ).setTimestamp();
         await user.send({ embeds: [keyEmbed] });
     } catch {
-        await channel.send({ content: `<@${sessionData.userId}> Konnte keine DM senden. Key: \`\`\`${key}\`\`\`` });
+        await channel.send({ content: `<@${sessionData.userId}> Could not send DM. Key: \`\`\`${key}\`\`\`` });
     }
 
     await logAction(client, 'PAYMENT', {
@@ -666,12 +666,12 @@ async function handleRedeemCommand(interaction) {
     await interaction.deferReply({ flags: 64 });
 
     const keyData = keysData.keys.find(k => k.key === keyInput && k.guildId === guildId);
-    if (!keyData)       return interaction.editReply({ content: '❌ Ungültiger Key.' });
-    if (keyData.redeemed) return interaction.editReply({ content: '❌ Dieser Key wurde bereits eingelöst.' });
-    if (Date.now() > keyData.expiresAt) return interaction.editReply({ content: '❌ Dieser Key ist abgelaufen.' });
+    if (!keyData)       return interaction.editReply({ content: '❌ Invalid key.' });
+    if (keyData.redeemed) return interaction.editReply({ content: '❌ This key has already been redeemed.' });
+    if (Date.now() > keyData.expiresAt) return interaction.editReply({ content: '❌ This key has expired.' });
 
     const existingSub = keysData.subscriptions.find(s => s.userId === userId && s.guildId === guildId && s.active);
-    if (existingSub) return interaction.editReply({ content: '❌ Du hast bereits ein aktives Abonnement.' });
+    if (existingSub) return interaction.editReply({ content: '❌ You already have an active subscription.' });
 
     keyData.redeemed = true; keyData.redeemedBy = userId; keyData.redeemedAt = Date.now();
     const expiresAt = Date.now() + keyData.durationMs;
@@ -683,8 +683,8 @@ async function handleRedeemCommand(interaction) {
     else { existing.expiresAt = expiresAt; existing.active = true; existing.duration = keyData.duration; }
     saveWhitelist();
 
-    const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Key eingelöst!')
-        .addFields({ name: '📅 Läuft ab', value: `<t:${Math.floor(expiresAt / 1000)}:R>`, inline: true }).setTimestamp();
+    const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Key Redeemed!')
+        .addFields({ name: '📅 Expires', value: `<t:${Math.floor(expiresAt / 1000)}:R>`, inline: true }).setTimestamp();
     await interaction.editReply({ embeds: [embed] });
 
     await logAction(client, 'KEY_REDEEM', { 'User': `${interaction.user.tag}`, 'Key': keyInput, 'Package': keyData.duration });
@@ -695,14 +695,14 @@ async function handleCheckCommand(interaction) {
     const guildId = interaction.guild.id;
     await interaction.deferReply({ flags: 64 });
     const sub = keysData.subscriptions.find(s => s.userId === userId && s.guildId === guildId && s.active);
-    if (!sub) return interaction.editReply({ content: '❌ Kein aktives Abo. Kaufe einen Key mit dem Ticket System.' });
+    if (!sub) return interaction.editReply({ content: '❌ No active subscription. Purchase a key using the ticket system.' });
     const tl = sub.expiresAt - Date.now();
-    if (tl <= 0) { sub.active = false; saveKeys(); return interaction.editReply({ content: '❌ Dein Abo ist abgelaufen.' }); }
-    const embed = new EmbedBuilder().setColor('#5865F2').setTitle('⏱️ Abo Info')
+    if (tl <= 0) { sub.active = false; saveKeys(); return interaction.editReply({ content: '❌ Your subscription has expired.' }); }
+    const embed = new EmbedBuilder().setColor('#5865F2').setTitle('⏱️ Subscription Info')
         .addFields(
-            { name: '📅 Läuft ab', value: `<t:${Math.floor(sub.expiresAt / 1000)}:F>`, inline: false },
-            { name: '⏳ Verbleibend', value: `${Math.floor(tl/3600000)}h ${Math.floor((tl%3600000)/60000)}m`, inline: true },
-            { name: '📦 Paket', value: sub.duration === '1month' ? '1 Month' : 'Lifetime', inline: true }
+            { name: '📅 Expires', value: `<t:${Math.floor(sub.expiresAt / 1000)}:F>`, inline: false },
+            { name: '⏳ Time Left', value: `${Math.floor(tl/3600000)}h ${Math.floor((tl%3600000)/60000)}m`, inline: true },
+            { name: '📦 Package', value: sub.duration === '1month' ? '1 Month' : 'Lifetime', inline: true }
         ).setTimestamp();
     await interaction.editReply({ embeds: [embed] });
 }
@@ -712,33 +712,33 @@ async function handleWhitelistCommand(interaction) {
     const guildId = interaction.guild.id;
     await interaction.deferReply({ flags: 64 });
     const entry = whitelistedUsers.users.find(u => u.userId === userId && u.guildId === guildId && u.active);
-    if (!entry) return interaction.editReply({ content: '❌ Du bist nicht gewhitelistet.' });
+    if (!entry) return interaction.editReply({ content: '❌ You are not whitelisted.' });
     const tl = entry.expiresAt - Date.now();
-    if (tl <= 0) { entry.active = false; saveWhitelist(); return interaction.editReply({ content: '❌ Deine Whitelist ist abgelaufen.' }); }
+    if (tl <= 0) { entry.active = false; saveWhitelist(); return interaction.editReply({ content: '❌ Your whitelist has expired.' }); }
     const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Whitelist Status')
         .addFields(
-            { name: '📅 Läuft ab', value: `<t:${Math.floor(entry.expiresAt / 1000)}:F>`, inline: false },
-            { name: '⏳ Verbleibend', value: `${Math.floor(tl/3600000)}h ${Math.floor((tl%3600000)/60000)}m`, inline: true }
+            { name: '📅 Expires', value: `<t:${Math.floor(entry.expiresAt / 1000)}:F>`, inline: false },
+            { name: '⏳ Time Left', value: `${Math.floor(tl/3600000)}h ${Math.floor((tl%3600000)/60000)}m`, inline: true }
         ).setTimestamp();
     await interaction.editReply({ embeds: [embed] });
 }
 
 async function handleUnwhitelistCommand(interaction) {
-    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ No permission.', flags: 64 });
     const target = interaction.options.getUser('user');
     await interaction.deferReply({ flags: 64 });
     const entry = whitelistedUsers.users.find(u => u.userId === target.id && u.guildId === interaction.guild.id);
-    if (!entry?.active) return interaction.editReply({ content: `❌ ${target} ist nicht gewhitelistet.` });
+    if (!entry?.active) return interaction.editReply({ content: `❌ ${target} is not whitelisted.` });
     entry.active = false; saveWhitelist();
     const sub = keysData.subscriptions.find(s => s.userId === target.id && s.guildId === interaction.guild.id && s.active);
     if (sub) { sub.active = false; saveKeys(); }
-    await interaction.editReply({ content: `✅ ${target} wurde von der Whitelist entfernt.` });
-    await target.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('❌ Whitelist entfernt').setDescription('Deine Whitelist wurde von einem Admin entfernt.').setTimestamp()] }).catch(() => {});
+    await interaction.editReply({ content: `✅ ${target} has been removed from the whitelist.` });
+    await target.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('❌ Whitelist Removed').setDescription('Your whitelist has been removed by an admin.').setTimestamp()] }).catch(() => {});
     await logAction(client, 'UNWHITELIST', { 'Admin': interaction.user.tag, 'Target': target.tag });
 }
 
 async function handleGiveKeyCommand(interaction) {
-    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ No permission.', flags: 64 });
     const target = interaction.options.getUser('user');
     const duration = interaction.options.getString('duration');
     await interaction.deferReply({ flags: 64 });
@@ -748,11 +748,11 @@ async function handleGiveKeyCommand(interaction) {
     keysData.keys.push({ key, userId: target.id, guildId: interaction.guild.id, duration, durationMs, expiresAt, createdAt: Date.now(), redeemed: false, givenBy: interaction.user.id });
     saveKeys();
     try {
-        await target.send({ embeds: [new EmbedBuilder().setColor('#00FF00').setTitle('🎁 Key erhalten!')
-            .setDescription(`\`\`\`${key}\`\`\`\n\nBenutze \`/redeem ${key}\``)
-            .addFields({ name: '⏱️ Paket', value: duration === '1month' ? '1 Month' : 'Lifetime', inline: true }).setTimestamp()] });
+        await target.send({ embeds: [new EmbedBuilder().setColor('#00FF00').setTitle('🎁 Key Received!')
+            .setDescription(`\`\`\`${key}\`\`\`\n\nUse \`/redeem ${key}\` to redeem.`)
+            .addFields({ name: '⏱️ Package', value: duration === '1month' ? '1 Month' : 'Lifetime', inline: true }).setTimestamp()] });
     } catch {}
-    await interaction.editReply({ content: `✅ Key an ${target} gesendet: \`${key}\`` });
+    await interaction.editReply({ content: `✅ Key sent to ${target}: \`${key}\`` });
     await logAction(client, 'WHITELIST', { 'Admin': interaction.user.tag, 'Target': target.tag, 'Key': key, 'Duration': duration });
 }
 
@@ -763,18 +763,18 @@ async function handleStockCommand(interaction) {
 }
 
 async function handleRemoveCooldownCommand(interaction) {
-    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ No permission.', flags: 64 });
     await interaction.deferReply({ flags: 64 });
-    await interaction.editReply({ content: '✅ Cooldowns sind derzeit nicht aktiv.' });
+    await interaction.editReply({ content: '✅ Cooldowns are currently not active.' });
 }
 
 async function handleTicketClose(interaction) {
     const channelId = interaction.customId.replace('close_ticket_', '');
     const channel = interaction.guild.channels.cache.get(channelId);
-    if (!channel) return interaction.reply({ content: '❌ Ticket channel nicht gefunden.', flags: 64 });
+    if (!channel) return interaction.reply({ content: '❌ Ticket channel not found.', flags: 64 });
 
-    await interaction.reply({ content: '🔒 Ticket wird geschlossen...', flags: 64 });
-    await channel.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('🔒 Ticket geschlossen').setDescription(`Geschlossen von ${interaction.user}`).setTimestamp()] });
+    await interaction.reply({ content: '🔒 Closing ticket...', flags: 64 });
+    await channel.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('🔒 Ticket Closed').setDescription(`Closed by ${interaction.user}`).setTimestamp()] });
 
     await logAction(client, 'TICKET_CLOSE', {
         'Closed by': `${interaction.user.tag}`,
@@ -797,7 +797,7 @@ async function checkExpiredSubscriptions() {
             if (wl) { wl.active = false; saveWhitelist(); }
             try {
                 const user = await client.users.fetch(sub.userId);
-                await user.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('⏰ Abo abgelaufen').setDescription('Dein Abo ist abgelaufen.').setTimestamp()] }).catch(() => {});
+                await user.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('⏰ Subscription Expired').setDescription('Your subscription has expired.').setTimestamp()] }).catch(() => {});
             } catch {}
         }
     }
@@ -816,13 +816,13 @@ async function handleGiveawayCommand(interaction) {
     if (!ADMIN_USER_IDS.includes(interaction.user.id) &&
         !interaction.member.roles.cache.has(MOD_ROLE_ID) &&
         !interaction.member.roles.cache.has(ADMIN_ROLE_ID))
-        return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+        return interaction.reply({ content: '❌ No permission.', flags: 64 });
 
     const prize    = interaction.options.getString('prize');
     const durStr   = interaction.options.getString('duration');
     const winners  = interaction.options.getInteger('winners');
     const durMs    = parseDuration(durStr);
-    if (!durMs) return interaction.reply({ content: '❌ Ungültige Dauer. z.B. 1h, 30m, 1d', flags: 64 });
+    if (!durMs) return interaction.reply({ content: '❌ Invalid duration. e.g., 1h, 30m, 1d', flags: 64 });
 
     await interaction.deferReply();
     const endsAt = Date.now() + durMs;
@@ -830,11 +830,11 @@ async function handleGiveawayCommand(interaction) {
     const embed = new EmbedBuilder()
         .setColor('#FFD700')
         .setTitle('🎉 GIVEAWAY')
-        .setDescription(`**Preis:** ${prize}\n\nReagiere mit 🎉 um teilzunehmen!\n\n**Gewinner:** ${winners}\n**Endet:** <t:${Math.floor(endsAt/1000)}:R>`)
+        .setDescription(`**Prize:** ${prize}\n\nClick 🎉 to participate!\n\n**Winners:** ${winners}\n**Ends:** <t:${Math.floor(endsAt/1000)}:R>`)
         .setFooter({ text: `${winners} winner(s)` })
         .setTimestamp(endsAt);
 
-    const btn = new ButtonBuilder().setCustomId('giveaway_enter').setLabel('🎉 Teilnehmen').setStyle(ButtonStyle.Primary);
+    const btn = new ButtonBuilder().setCustomId('giveaway_enter').setLabel('🎉 Participate').setStyle(ButtonStyle.Primary);
     const msg = await interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
 
     const giveaway = { messageId: msg.id, channelId: interaction.channel.id, guildId: interaction.guild.id, prize, winners, endsAt, participants: [], ended: false, hostedBy: interaction.user.id };
@@ -846,11 +846,11 @@ async function handleGiveawayCommand(interaction) {
 
 async function handleGiveawayEnter(interaction) {
     const giveaway = giveawaysData.giveaways.find(g => g.messageId === interaction.message.id && !g.ended);
-    if (!giveaway) return interaction.reply({ content: '❌ Dieses Giveaway ist beendet.', flags: 64 });
-    if (giveaway.participants.includes(interaction.user.id)) return interaction.reply({ content: '✅ Du nimmst bereits teil!', flags: 64 });
+    if (!giveaway) return interaction.reply({ content: '❌ This giveaway has ended.', flags: 64 });
+    if (giveaway.participants.includes(interaction.user.id)) return interaction.reply({ content: '✅ You are already participating!', flags: 64 });
     giveaway.participants.push(interaction.user.id);
     saveGiveaways();
-    await interaction.reply({ content: '✅ Du nimmst jetzt am Giveaway teil! Viel Glück! 🎉', flags: 64 });
+    await interaction.reply({ content: '✅ You are now participating in the giveaway! Good luck! 🎉', flags: 64 });
 }
 
 async function endGiveaway(giveaway) {
@@ -867,32 +867,32 @@ async function endGiveaway(giveaway) {
 
         const embed = new EmbedBuilder()
             .setColor('#FFD700')
-            .setTitle('🎉 GIVEAWAY BEENDET')
-            .setDescription(`**Preis:** ${giveaway.prize}\n\n**Gewinner:** ${winners.length ? winners.map(w => `<@${w}>`).join(', ') : 'Keine Teilnehmer'}`)
+            .setTitle('🎉 GIVEAWAY ENDED')
+            .setDescription(`**Prize:** ${giveaway.prize}\n\n**Winner(s):** ${winners.length ? winners.map(w => `<@${w}>`).join(', ') : 'No participants'}`)
             .setTimestamp();
 
-        await channel.send({ embeds: [embed], content: winners.length ? `🎉 Glückwunsch ${winners.map(w=>`<@${w}>`).join(' ')}!` : 'Kein Gewinner.' });
+        await channel.send({ embeds: [embed], content: winners.length ? `🎉 Congratulations ${winners.map(w=>`<@${w}>`).join(' ')}!` : 'No winner.' });
     } catch (e) { console.error('End giveaway error:', e); }
 }
 
 async function handleGiveawayEnd(interaction) {
     if (!ADMIN_USER_IDS.includes(interaction.user.id) && !interaction.member.roles.cache.has(ADMIN_ROLE_ID))
-        return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+        return interaction.reply({ content: '❌ No permission.', flags: 64 });
     const msgId = interaction.options.getString('messageid');
     const gw = giveawaysData.giveaways.find(g => g.messageId === msgId && !g.ended);
-    if (!gw) return interaction.reply({ content: '❌ Giveaway nicht gefunden.', flags: 64 });
+    if (!gw) return interaction.reply({ content: '❌ Giveaway not found.', flags: 64 });
     await endGiveaway(gw);
-    await interaction.reply({ content: '✅ Giveaway beendet.', flags: 64 });
+    await interaction.reply({ content: '✅ Giveaway ended.', flags: 64 });
 }
 
 async function handleGiveawayReroll(interaction) {
     if (!ADMIN_USER_IDS.includes(interaction.user.id) && !interaction.member.roles.cache.has(ADMIN_ROLE_ID))
-        return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+        return interaction.reply({ content: '❌ No permission.', flags: 64 });
     const msgId = interaction.options.getString('messageid');
     const gw = giveawaysData.giveaways.find(g => g.messageId === msgId);
-    if (!gw) return interaction.reply({ content: '❌ Giveaway nicht gefunden.', flags: 64 });
+    if (!gw) return interaction.reply({ content: '❌ Giveaway not found.', flags: 64 });
     gw.ended = false; await endGiveaway(gw);
-    await interaction.reply({ content: '✅ Reroll durchgeführt.', flags: 64 });
+    await interaction.reply({ content: '✅ Reroll completed.', flags: 64 });
 }
 
 async function checkGiveaways() {
@@ -902,12 +902,11 @@ async function checkGiveaways() {
     }
 }
 
-// ─── EXPRESS WEB DASHBOARD (MANUELLES CORS) ───────────────────────────────────
+// ─── EXPRESS WEB DASHBOARD ───────────────────────────────────────────────────
 const appExpress = express();
 
-// CORS Middleware - MUSS VOR ALLEN ROUTES KOMMEN!
+// CORS Middleware
 appExpress.use((req, res, next) => {
-    // Erlaube alle Origins (für Netlify)
     const origin = req.headers.origin;
     if (origin && (origin.includes('netlify.app') || origin.includes('localhost'))) {
         res.header('Access-Control-Allow-Origin', origin);
@@ -918,7 +917,6 @@ appExpress.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.header('Access-Control-Allow-Credentials', 'true');
     
-    // OPTIONS Preflight Request
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
@@ -929,31 +927,22 @@ appExpress.use(express.json());
 
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin123';
 
-// ─── API ROUTES ───────────────────────────────────────────────────────────────
-
 // Auth Route
 appExpress.post('/api/auth', (req, res) => {
-    console.log('Auth attempt:', req.body.password ? 'Password provided' : 'No password');
     if (req.body.password === DASHBOARD_PASSWORD) {
         res.json({ ok: true, token: Buffer.from(DASHBOARD_PASSWORD).toString('base64') });
     } else {
-        res.status(401).json({ ok: false, error: 'Wrong password' });
+        res.status(401).json({ ok: false });
     }
 });
 
-// Auth Middleware
 function authMiddleware(req, res, next) {
     const token = req.headers['authorization'];
-    const expectedToken = Buffer.from(DASHBOARD_PASSWORD).toString('base64');
-    
-    if (token === expectedToken) {
-        return next();
-    }
-    console.log('Auth failed: Invalid token');
+    if (token === Buffer.from(DASHBOARD_PASSWORD).toString('base64')) return next();
     res.status(401).json({ error: 'Unauthorized' });
 }
 
-// Logs Route
+// API Routes
 appExpress.get('/api/logs', authMiddleware, (req, res) => {
     const page = parseInt(req.query.page) || 0;
     const limit = 50;
@@ -963,7 +952,6 @@ appExpress.get('/api/logs', authMiddleware, (req, res) => {
     res.json({ logs: logs.slice(page * limit, (page+1) * limit), total: logs.length });
 });
 
-// Stats Route
 appExpress.get('/api/stats', authMiddleware, (req, res) => {
     const activeSubs = keysData.subscriptions.filter(s => s.active).length;
     const totalKeys  = keysData.keys.length;
@@ -972,13 +960,11 @@ appExpress.get('/api/stats', authMiddleware, (req, res) => {
     res.json({ activeSubs, totalKeys, totalLogs, activeWL });
 });
 
-// Guilds Route
 appExpress.get('/api/guilds', authMiddleware, (req, res) => {
     const guilds = client.guilds.cache.map(g => ({ id: g.id, name: g.name, memberCount: g.memberCount }));
     res.json(guilds);
 });
 
-// Channels Route
 appExpress.get('/api/channels/:guildId', authMiddleware, async (req, res) => {
     try {
         const guild = client.guilds.cache.get(req.params.guildId);
@@ -992,24 +978,16 @@ appExpress.get('/api/channels/:guildId', authMiddleware, async (req, res) => {
     }
 });
 
-// Send Message Route
 appExpress.post('/api/send', authMiddleware, async (req, res) => {
     try {
         const { guildId, channelId, content, useEmbed, embedData, everyone, here } = req.body;
         
-        console.log('Send request:', { guildId, channelId, contentLength: content?.length, useEmbed });
-        
         const guild = client.guilds.cache.get(guildId);
-        if (!guild) {
-            return res.status(404).json({ error: 'Guild not found' });
-        }
+        if (!guild) return res.status(404).json({ error: 'Guild not found' });
         
         const channel = guild.channels.cache.get(channelId);
-        if (!channel) {
-            return res.status(404).json({ error: 'Channel not found' });
-        }
+        if (!channel) return res.status(404).json({ error: 'Channel not found' });
         
-        // Prüfe Berechtigungen
         const botMember = guild.members.cache.get(client.user.id);
         if (!channel.permissionsFor(botMember).has('SendMessages')) {
             return res.status(403).json({ error: 'Bot has no permission to send messages in this channel' });
@@ -1038,18 +1016,14 @@ appExpress.post('/api/send', authMiddleware, async (req, res) => {
             });
         }
         
-        console.log('Message sent successfully to', channel.name);
-        res.json({ ok: true, message: 'Nachricht gesendet' });
-        
+        res.json({ ok: true });
     } catch (e) { 
-        console.error('Send error:', e);
         res.status(500).json({ error: e.message }); 
     }
 });
 
-// Start Server
 const PORT = process.env.PORT || 3000;
-appExpress.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard API auf Port ${PORT}`));
+appExpress.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard API on port ${PORT}`));
 
 // ─── BOT LOGIN ────────────────────────────────────────────────────────────────
 client.login(process.env.DISCORD_TOKEN);
