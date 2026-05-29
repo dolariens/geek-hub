@@ -41,14 +41,28 @@ let keysData         = loadJSON('./keys.json',      { keys: [], subscriptions: [
 let whitelistedUsers = loadJSON('./whitelist.json', { users: [] });
 let logsData         = loadJSON('./logs.json',      { logs: [] });
 let giveawaysData    = loadJSON('./giveaways.json', { giveaways: [] });
-let gamesData        = loadJSON('./games.json',     { games: ['Minecraft', 'GTA V', 'Roblox', 'Fortnite', 'Valorant', 'Call of Duty'] });
+let gamesData        = loadJSON('./games.json',     { games: [
+    { name: 'Minecraft', link: 'https://minecraft.net' },
+    { name: 'GTA V', link: 'https://rockstargames.com/gta-v' },
+    { name: 'Roblox', link: 'https://roblox.com' },
+    { name: 'Fortnite', link: 'https://fortnite.com' },
+    { name: 'Valorant', link: 'https://playvalorant.com' },
+    { name: 'Call of Duty', link: 'https://callofduty.com' }
+] });
 
 if (!keysData.keys)             keysData.keys = [];
 if (!keysData.subscriptions)    keysData.subscriptions = [];
 if (!whitelistedUsers.users)    whitelistedUsers.users = [];
 if (!logsData.logs)             logsData.logs = [];
 if (!giveawaysData.giveaways)   giveawaysData.giveaways = [];
-if (!gamesData.games)           gamesData.games = ['Minecraft', 'GTA V', 'Roblox', 'Fortnite', 'Valorant', 'Call of Duty'];
+if (!gamesData.games)           gamesData.games = [
+    { name: 'Minecraft', link: 'https://minecraft.net' },
+    { name: 'GTA V', link: 'https://rockstargames.com/gta-v' },
+    { name: 'Roblox', link: 'https://roblox.com' },
+    { name: 'Fortnite', link: 'https://fortnite.com' },
+    { name: 'Valorant', link: 'https://playvalorant.com' },
+    { name: 'Call of Duty', link: 'https://callofduty.com' }
+];
 
 function saveKeys()      { saveJSON('./keys.json', keysData); }
 function saveWhitelist() { saveJSON('./whitelist.json', whitelistedUsers); }
@@ -377,7 +391,6 @@ async function createRequestPanel(message) {
     await message.delete().catch(() => {});
 }
 
-// ─── TICKET CREATION ──────────────────────────────────────────────────────────
 async function handleTicketCreation(interaction) {
     const type = interaction.customId.replace('create_ticket_', '');
     const userId = interaction.user.id;
@@ -1026,7 +1039,7 @@ appExpress.post('/api/send', authMiddleware, async (req, res) => {
 });
 
 // ============================================================
-// GAMES API (für Games we support)
+// GAMES API (mit Links)
 // ============================================================
 
 // Get all games
@@ -1034,13 +1047,13 @@ appExpress.get('/api/games', authMiddleware, (req, res) => {
     res.json({ games: gamesData.games });
 });
 
-// Add a game
+// Add a game (with optional link)
 appExpress.post('/api/games/add', authMiddleware, (req, res) => {
     const { game } = req.body;
-    if (!game) return res.status(400).json({ error: 'Game name required' });
+    if (!game || !game.name) return res.status(400).json({ error: 'Game name required' });
     
-    if (!gamesData.games.includes(game)) {
-        gamesData.games.push(game);
+    if (!gamesData.games.some(g => g.name === game.name)) {
+        gamesData.games.push({ name: game.name, link: game.link || '' });
         saveGames();
         res.json({ ok: true, games: gamesData.games });
     } else {
@@ -1053,7 +1066,7 @@ appExpress.post('/api/games/remove', authMiddleware, (req, res) => {
     const { game } = req.body;
     if (!game) return res.status(400).json({ error: 'Game name required' });
     
-    gamesData.games = gamesData.games.filter(g => g !== game);
+    gamesData.games = gamesData.games.filter(g => g.name !== game);
     saveGames();
     res.json({ ok: true, games: gamesData.games });
 });
