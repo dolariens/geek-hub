@@ -374,6 +374,7 @@ async function createRequestPanel(message) {
     await message.delete().catch(() => {});
 }
 
+// ─── TICKET CREATION ──────────────────────────────────────────────────────────
 async function handleTicketCreation(interaction) {
     const type = interaction.customId.replace('create_ticket_', '');
     const userId = interaction.user.id;
@@ -901,39 +902,58 @@ async function checkGiveaways() {
     }
 }
 
-// ─── EXPRESS WEB DASHBOARD (OHNE cors package - manuelles CORS) ───────────────
+// ─── EXPRESS WEB DASHBOARD (MANUELLES CORS) ───────────────────────────────────
 const appExpress = express();
 
-appExpress.use(express.json());
-
-// Manuelles CORS (funktioniert ohne extra Package)
+// CORS Middleware - MUSS VOR ALLEN ROUTES KOMMEN!
 appExpress.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    // Erlaube alle Origins (für Netlify)
+    const origin = req.headers.origin;
+    if (origin && (origin.includes('netlify.app') || origin.includes('localhost'))) {
+        res.header('Access-Control-Allow-Origin', origin);
+    } else {
+        res.header('Access-Control-Allow-Origin', '*');
+    }
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    // OPTIONS Preflight Request
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
     next();
 });
 
+appExpress.use(express.json());
+
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin123';
 
-// API Routes
+// ─── API ROUTES ───────────────────────────────────────────────────────────────
+
+// Auth Route
 appExpress.post('/api/auth', (req, res) => {
+    console.log('Auth attempt:', req.body.password ? 'Password provided' : 'No password');
     if (req.body.password === DASHBOARD_PASSWORD) {
         res.json({ ok: true, token: Buffer.from(DASHBOARD_PASSWORD).toString('base64') });
     } else {
-        res.status(401).json({ ok: false });
+        res.status(401).json({ ok: false, error: 'Wrong password' });
     }
 });
 
+// Auth Middleware
 function authMiddleware(req, res, next) {
     const token = req.headers['authorization'];
-    if (token === Buffer.from(DASHBOARD_PASSWORD).toString('base64')) return next();
+    const expectedToken = Buffer.from(DASHBOARD_PASSWORD).toString('base64');
+    
+    if (token === expectedToken) {
+        return next();
+    }
+    console.log('Auth failed: Invalid token');
     res.status(401).json({ error: 'Unauthorized' });
 }
 
+// Logs Route
 appExpress.get('/api/logs', authMiddleware, (req, res) => {
     const page = parseInt(req.query.page) || 0;
     const limit = 50;
@@ -943,6 +963,7 @@ appExpress.get('/api/logs', authMiddleware, (req, res) => {
     res.json({ logs: logs.slice(page * limit, (page+1) * limit), total: logs.length });
 });
 
+// Stats Route
 appExpress.get('/api/stats', authMiddleware, (req, res) => {
     const activeSubs = keysData.subscriptions.filter(s => s.active).length;
     const totalKeys  = keysData.keys.length;
@@ -951,29 +972,48 @@ appExpress.get('/api/stats', authMiddleware, (req, res) => {
     res.json({ activeSubs, totalKeys, totalLogs, activeWL });
 });
 
+// Guilds Route
 appExpress.get('/api/guilds', authMiddleware, (req, res) => {
     const guilds = client.guilds.cache.map(g => ({ id: g.id, name: g.name, memberCount: g.memberCount }));
     res.json(guilds);
 });
 
+// Channels Route
 appExpress.get('/api/channels/:guildId', authMiddleware, async (req, res) => {
     try {
         const guild = client.guilds.cache.get(req.params.guildId);
         if (!guild) return res.status(404).json({ error: 'Guild not found' });
         const channels = guild.channels.cache
-            .filter(c => c.type === ChannelType.GuildText)
+            .filter(c => c.type === ChannelType.GuildText && c.viewable)
             .map(c => ({ id: c.id, name: c.name }));
         res.json(channels);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
+// Send Message Route
 appExpress.post('/api/send', authMiddleware, async (req, res) => {
     try {
         const { guildId, channelId, content, useEmbed, embedData, everyone, here } = req.body;
+        
+        console.log('Send request:', { guildId, channelId, contentLength: content?.length, useEmbed });
+        
         const guild = client.guilds.cache.get(guildId);
-        if (!guild) return res.status(404).json({ error: 'Guild not found' });
+        if (!guild) {
+            return res.status(404).json({ error: 'Guild not found' });
+        }
+        
         const channel = guild.channels.cache.get(channelId);
-        if (!channel) return res.status(404).json({ error: 'Channel not found' });
+        if (!channel) {
+            return res.status(404).json({ error: 'Channel not found' });
+        }
+        
+        // Prüfe Berechtigungen
+        const botMember = guild.members.cache.get(client.user.id);
+        if (!channel.permissionsFor(botMember).has('SendMessages')) {
+            return res.status(403).json({ error: 'Bot has no permission to send messages in this channel' });
+        }
 
         let msgContent = content || '';
         if (everyone) msgContent = '@everyone ' + msgContent;
@@ -985,16 +1025,31 @@ appExpress.post('/api/send', authMiddleware, async (req, res) => {
                 .setTitle(embedData.title || '')
                 .setDescription(embedData.description || '');
             if (embedData.footer) embed.setFooter({ text: embedData.footer });
-            await channel.send({ content: msgContent || undefined, embeds: [embed], allowedMentions: { parse: ['everyone', 'here'] } });
+            
+            await channel.send({ 
+                content: msgContent || undefined, 
+                embeds: [embed], 
+                allowedMentions: { parse: everyone || here ? ['everyone', 'here'] : [] } 
+            });
         } else {
-            await channel.send({ content: msgContent, allowedMentions: { parse: ['everyone', 'here'] } });
+            await channel.send({ 
+                content: msgContent, 
+                allowedMentions: { parse: everyone || here ? ['everyone', 'here'] : [] } 
+            });
         }
-        res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+        
+        console.log('Message sent successfully to', channel.name);
+        res.json({ ok: true, message: 'Nachricht gesendet' });
+        
+    } catch (e) { 
+        console.error('Send error:', e);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
+// Start Server
 const PORT = process.env.PORT || 3000;
 appExpress.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard API auf Port ${PORT}`));
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
+// ─── BOT LOGIN ────────────────────────────────────────────────────────────────
 client.login(process.env.DISCORD_TOKEN);
