@@ -41,17 +41,20 @@ let keysData         = loadJSON('./keys.json',      { keys: [], subscriptions: [
 let whitelistedUsers = loadJSON('./whitelist.json', { users: [] });
 let logsData         = loadJSON('./logs.json',      { logs: [] });
 let giveawaysData    = loadJSON('./giveaways.json', { giveaways: [] });
+let gamesData        = loadJSON('./games.json',     { games: ['Minecraft', 'GTA V', 'Roblox', 'Fortnite', 'Valorant', 'Call of Duty'] });
 
 if (!keysData.keys)             keysData.keys = [];
 if (!keysData.subscriptions)    keysData.subscriptions = [];
 if (!whitelistedUsers.users)    whitelistedUsers.users = [];
 if (!logsData.logs)             logsData.logs = [];
 if (!giveawaysData.giveaways)   giveawaysData.giveaways = [];
+if (!gamesData.games)           gamesData.games = ['Minecraft', 'GTA V', 'Roblox', 'Fortnite', 'Valorant', 'Call of Duty'];
 
 function saveKeys()      { saveJSON('./keys.json', keysData); }
 function saveWhitelist() { saveJSON('./whitelist.json', whitelistedUsers); }
 function saveLogs()      { saveJSON('./logs.json', logsData); }
 function saveGiveaways() { saveJSON('./giveaways.json', giveawaysData); }
+function saveGames()     { saveJSON('./games.json', gamesData); }
 
 // ─── LOGGING HELPER ───────────────────────────────────────────────────────────
 async function logAction(client, type, data) {
@@ -1020,6 +1023,39 @@ appExpress.post('/api/send', authMiddleware, async (req, res) => {
     } catch (e) { 
         res.status(500).json({ error: e.message }); 
     }
+});
+
+// ============================================================
+// GAMES API (für Games we support)
+// ============================================================
+
+// Get all games
+appExpress.get('/api/games', authMiddleware, (req, res) => {
+    res.json({ games: gamesData.games });
+});
+
+// Add a game
+appExpress.post('/api/games/add', authMiddleware, (req, res) => {
+    const { game } = req.body;
+    if (!game) return res.status(400).json({ error: 'Game name required' });
+    
+    if (!gamesData.games.includes(game)) {
+        gamesData.games.push(game);
+        saveGames();
+        res.json({ ok: true, games: gamesData.games });
+    } else {
+        res.status(400).json({ error: 'Game already exists' });
+    }
+});
+
+// Remove a game
+appExpress.post('/api/games/remove', authMiddleware, (req, res) => {
+    const { game } = req.body;
+    if (!game) return res.status(400).json({ error: 'Game name required' });
+    
+    gamesData.games = gamesData.games.filter(g => g !== game);
+    saveGames();
+    res.json({ ok: true, games: gamesData.games });
 });
 
 const PORT = process.env.PORT || 3000;
