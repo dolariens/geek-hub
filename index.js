@@ -18,12 +18,16 @@ const ADMIN_USER_IDS       = config.adminUserIds       || [];
 const MOD_ROLE_ID          = config.modRoleId          || '1509827018513186866';
 const ADMIN_ROLE_ID        = config.adminRoleId        || '1509827044345774111';
 const BUY_PING_ROLE_ID     = config.buyPingRoleId      || '1509826896756736000';
+const VERIFY_ROLE_ID       = '1509826939924385922';
 const SUPPORT_CATEGORY_ID  = config.supportCategoryId  || '1509830957304381450';
 const BUY_CATEGORY_ID      = config.buyCategoryId      || '1509830769969729647';
 const REQUEST_CATEGORY_ID  = config.requestCategoryId  || '1509830979009773618';
 const APPEAL_CATEGORY_ID   = config.appealCategoryId   || '1508084800106528828';
 const LOG_CHANNEL_ID       = config.logChannelId       || '1509832784880074782';
 const NOWPAYMENTS_API      = 'https://api.nowpayments.io/v1';
+
+// Website Key Generator - nur diese ID darf keys generieren
+const WEBSITE_KEY_GENERATOR_ID = '1482300597935013968';
 
 // ─── DATA FILES ───────────────────────────────────────────────────────────────
 function loadJSON(file, fallback) {
@@ -41,6 +45,7 @@ let keysData         = loadJSON('./keys.json',      { keys: [], subscriptions: [
 let whitelistedUsers = loadJSON('./whitelist.json', { users: [] });
 let logsData         = loadJSON('./logs.json',      { logs: [] });
 let giveawaysData    = loadJSON('./giveaways.json', { giveaways: [] });
+let websiteKeys      = loadJSON('./websitekeys.json', { keys: [] });
 let gamesData        = loadJSON('./games.json',     { games: [
     { name: 'Minecraft', link: 'https://minecraft.net' },
     { name: 'GTA V', link: 'https://rockstargames.com/gta-v' },
@@ -55,6 +60,7 @@ if (!keysData.subscriptions)    keysData.subscriptions = [];
 if (!whitelistedUsers.users)    whitelistedUsers.users = [];
 if (!logsData.logs)             logsData.logs = [];
 if (!giveawaysData.giveaways)   giveawaysData.giveaways = [];
+if (!websiteKeys.keys)          websiteKeys.keys = [];
 if (!gamesData.games)           gamesData.games = [
     { name: 'Minecraft', link: 'https://minecraft.net' },
     { name: 'GTA V', link: 'https://rockstargames.com/gta-v' },
@@ -68,6 +74,7 @@ function saveKeys()      { saveJSON('./keys.json', keysData); }
 function saveWhitelist() { saveJSON('./whitelist.json', whitelistedUsers); }
 function saveLogs()      { saveJSON('./logs.json', logsData); }
 function saveGiveaways() { saveJSON('./giveaways.json', giveawaysData); }
+function saveWebsiteKeys(){ saveJSON('./websitekeys.json', websiteKeys); }
 function saveGames()     { saveJSON('./games.json', gamesData); }
 
 // ─── LOGGING HELPER ───────────────────────────────────────────────────────────
@@ -91,7 +98,8 @@ async function logAction(client, type, data) {
             KICK: '#FF6B35', TICKET_OPEN: '#5865F2', TICKET_CLOSE: '#EB459E',
             PAYMENT: '#00FF00', KEY_REDEEM: '#57F287', WHITELIST: '#57F287',
             UNWHITELIST: '#ED4245', LINK_DELETE: '#FF6B35', GIVEAWAY: '#FFD700',
-            MOD_MSG: '#5865F2', SCRIPT_REQUEST: '#57F287'
+            MOD_MSG: '#5865F2', SCRIPT_REQUEST: '#57F287', VERIFY: '#57F287',
+            WEBSITE_KEY_GEN: '#5865F2', WEBSITE_KEY_REDEEM: '#57F287'
         };
 
         const embed = new EmbedBuilder()
@@ -220,6 +228,86 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
+    // ─── WEBSITE KEY GENERATOR COMMAND ────────────────────────────────────────
+    if (message.content.startsWith('!keygenwebsite')) {
+        // Nur die spezifische Discord ID darf diesen Command ausführen
+        if (message.author.id !== WEBSITE_KEY_GENERATOR_ID) {
+            return message.reply('❌ You do not have permission to use this command!');
+        }
+
+        const args = message.content.split(' ');
+        if (args.length < 2) {
+            return message.reply('❌ Usage: `!keygenwebsite <note/description>`\nExample: `!keygenwebsite For user XYZ - 1 Month Access`');
+        }
+
+        const note = args.slice(1).join(' ');
+        const websiteKey = generateWebsiteKey();
+        
+        websiteKeys.keys.push({
+            key: websiteKey,
+            note: note,
+            createdBy: message.author.id,
+            createdAt: Date.now(),
+            used: false,
+            usedBy: null,
+            usedAt: null
+        });
+        saveWebsiteKeys();
+
+        const embed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('🔑 Website Key Generated')
+            .setDescription(`**Key:** \`${websiteKey}\``)
+            .addFields(
+                { name: '📝 Note', value: note, inline: false },
+                { name: '🔐 Status', value: 'Not used yet', inline: true },
+                { name: '📅 Created', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+            )
+            .setTimestamp();
+
+        await message.reply({ embeds: [embed] });
+        
+        // Sende Key auch als DM
+        try {
+            await message.author.send({ 
+                content: `🔑 **Website Key Generated**\n\`${websiteKey}\`\n\nNote: ${note}\n\nThis key can only be used once on the website!`,
+                embeds: [embed]
+            });
+        } catch(e) {}
+
+        await logAction(client, 'WEBSITE_KEY_GEN', {
+            'Generator': message.author.tag,
+            'Key': websiteKey,
+            'Note': note
+        });
+        return;
+    }
+
+    // ─── VERIFY SYSTEM ────────────────────────────────────────────────────────
+    if (message.content.startsWith('!verify')) {
+        const verifyEmbed = new EmbedBuilder()
+            .setColor('#57F287')
+            .setTitle('✅ Verification System')
+            .setDescription('Click the button below to verify yourself and get access to the server!')
+            .addFields(
+                { name: '📋 What you get:', value: `• Access to all channels\n• Verified role\n• Full server access`, inline: false },
+                { name: '⚠️ Note:', value: 'You can only verify once per account!', inline: false }
+            )
+            .setTimestamp();
+
+        const verifyButton = new ButtonBuilder()
+            .setCustomId('verify_button')
+            .setLabel('✅ Verify Me')
+            .setStyle(ButtonStyle.Success)
+            .setEmoji('✅');
+
+        const row = new ActionRowBuilder().addComponents(verifyButton);
+        
+        await message.channel.send({ embeds: [verifyEmbed], components: [row] });
+        await message.delete().catch(() => {});
+        return;
+    }
+
     if (message.content.startsWith('!ticket')) {
         const sub = message.content.split(' ')[1]?.toLowerCase();
         if (sub === 'support') return createTicketPanel(message, 'support');
@@ -283,6 +371,56 @@ client.on('messageCreate', async (message) => {
     }
 });
 
+// ─── VERIFY BUTTON HANDLER ────────────────────────────────────────────────────
+client.on('interactionCreate', async (interaction) => {
+    if (interaction.isButton() && interaction.customId === 'verify_button') {
+        try {
+            const member = interaction.member;
+            const verifyRole = interaction.guild.roles.cache.get(VERIFY_ROLE_ID);
+            
+            if (!verifyRole) {
+                return interaction.reply({ 
+                    content: '❌ Verification role not found! Please contact an admin.', 
+                    flags: 64 
+                });
+            }
+
+            if (member.roles.cache.has(VERIFY_ROLE_ID)) {
+                return interaction.reply({ 
+                    content: '✅ You are already verified!', 
+                    flags: 64 
+                });
+            }
+
+            await member.roles.add(verifyRole);
+            
+            const embed = new EmbedBuilder()
+                .setColor('#57F287')
+                .setTitle('✅ Verification Successful!')
+                .setDescription(`Welcome ${member.user}, you have been verified and got the ${verifyRole.name} role!`)
+                .addFields(
+                    { name: '🎉 What now?', value: 'You now have full access to the server!\nFeel free to explore all channels.' },
+                    { name: '📅 Verified at', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+                )
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed], flags: 64 });
+            
+            await logAction(client, 'VERIFY', {
+                'User': `${member.user.tag} (${member.id})`,
+                'Role': verifyRole.name
+            });
+        } catch (error) {
+            console.error('Verify error:', error);
+            await interaction.reply({ 
+                content: '❌ An error occurred while verifying. Please contact an admin.', 
+                flags: 64 
+            });
+        }
+        return;
+    }
+});
+
 // ─── GUILD MEMBER ADD (Appeal auto-ticket) ────────────────────────────────────
 client.on('guildMemberAdd', async (member) => {
     try {
@@ -331,6 +469,7 @@ client.on('interactionCreate', async (interaction) => {
             if (interaction.customId.startsWith('close_ticket_'))  return handleTicketClose(interaction);
             if (interaction.customId.startsWith('check_payment_')) return checkPaymentStatus(interaction, interaction.customId.replace('check_payment_', ''));
             if (interaction.customId === 'giveaway_enter')          return handleGiveawayEnter(interaction);
+            if (interaction.customId === 'verify_button')           return; // Already handled above
         }
         if (interaction.isStringSelectMenu() && interaction.customId === 'duration_select') {
             return handleDurationSelect(interaction);
@@ -673,6 +812,11 @@ async function processSuccessfulPayment(channel, sessionData) {
 
 function generateKey() {
     return crypto.randomBytes(16).toString('hex').toUpperCase().match(/.{1,4}/g).join('-');
+}
+
+function generateWebsiteKey() {
+    const randomBytes = crypto.randomBytes(32).toString('hex').toUpperCase();
+    return 'WEB-' + randomBytes.match(/.{1,4}/g).join('-').slice(0, 29);
 }
 
 async function handleRedeemCommand(interaction) {
@@ -1038,16 +1182,84 @@ appExpress.post('/api/send', authMiddleware, async (req, res) => {
     }
 });
 
-// ============================================================
-// GAMES API (mit Links)
-// ============================================================
+// ─── WEBSITE KEY API ─────────────────────────────────────────────────────────
+// Redeem a website key (for the website frontend)
+appExpress.post('/api/website/redeem', authMiddleware, async (req, res) => {
+    try {
+        const { key } = req.body;
+        
+        if (!key) {
+            return res.status(400).json({ error: 'Key is required' });
+        }
+        
+        const keyData = websiteKeys.keys.find(k => k.key === key);
+        
+        if (!keyData) {
+            return res.status(404).json({ error: 'Invalid key' });
+        }
+        
+        if (keyData.used) {
+            return res.status(400).json({ error: 'Key has already been used' });
+        }
+        
+        // Mark key as used
+        keyData.used = true;
+        keyData.usedBy = req.userId || 'unknown';
+        keyData.usedAt = Date.now();
+        saveWebsiteKeys();
+        
+        await logAction(client, 'WEBSITE_KEY_REDEEM', {
+            'Key': key,
+            'Note': keyData.note || 'No note',
+            'Used By': req.userId || 'unknown'
+        });
+        
+        res.json({ 
+            ok: true, 
+            message: 'Key redeemed successfully!',
+            note: keyData.note
+        });
+        
+    } catch (e) {
+        console.error('Website key redeem error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
-// Get all games
+// Check if a website key is valid (without redeeming it)
+appExpress.post('/api/website/check', authMiddleware, async (req, res) => {
+    try {
+        const { key } = req.body;
+        
+        if (!key) {
+            return res.status(400).json({ error: 'Key is required' });
+        }
+        
+        const keyData = websiteKeys.keys.find(k => k.key === key);
+        
+        if (!keyData) {
+            return res.json({ valid: false, reason: 'Invalid key' });
+        }
+        
+        if (keyData.used) {
+            return res.json({ valid: false, reason: 'Key already used' });
+        }
+        
+        res.json({ 
+            valid: true,
+            note: keyData.note
+        });
+        
+    } catch (e) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── GAMES API (mit Links) ───────────────────────────────────────────────────
 appExpress.get('/api/games', authMiddleware, (req, res) => {
     res.json({ games: gamesData.games });
 });
 
-// Add a game (with optional link)
 appExpress.post('/api/games/add', authMiddleware, (req, res) => {
     const { game } = req.body;
     if (!game || !game.name) return res.status(400).json({ error: 'Game name required' });
@@ -1061,7 +1273,6 @@ appExpress.post('/api/games/add', authMiddleware, (req, res) => {
     }
 });
 
-// Remove a game
 appExpress.post('/api/games/remove', authMiddleware, (req, res) => {
     const { game } = req.body;
     if (!game) return res.status(400).json({ error: 'Game name required' });
