@@ -1,457 +1,998 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Geek Hub Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
-<style>
-:root {
-  --bg: #0a0a0f;
-  --bg2: #111118;
-  --bg3: #1a1a24;
-  --border: #2a2a3a;
-  --accent: #5865F2;
-  --accent2: #57F287;
-  --accent3: #FEE75C;
-  --accent4: #ED4245;
-  --text: #e8e8f0;
-  --muted: #6b6b80;
-  --card: #13131e;
+const {
+    Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder,
+    ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
+    PermissionFlagsBits, ChannelType, REST, Routes, SlashCommandBuilder,
+    ModalBuilder, TextInputBuilder, TextInputStyle, Events
+} = require('discord.js');
+const axios = require('axios');
+const fs = require('fs');
+const crypto = require('crypto');
+const express = require('express');
+const path = require('path');
+require('dotenv').config();
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+
+const ADMIN_USER_IDS       = config.adminUserIds       || [];
+const MOD_ROLE_ID          = config.modRoleId          || '1509827018513186866';
+const ADMIN_ROLE_ID        = config.adminRoleId        || '1509827044345774111';
+const BUY_PING_ROLE_ID     = config.buyPingRoleId      || '1509826896756736000';
+const SUPPORT_CATEGORY_ID  = config.supportCategoryId  || '1509830957304381450';
+const BUY_CATEGORY_ID      = config.buyCategoryId      || '1509830769969729647';
+const REQUEST_CATEGORY_ID  = config.requestCategoryId  || '1509830979009773618';
+const APPEAL_CATEGORY_ID   = config.appealCategoryId   || '1508084800106528828';
+const LOG_CHANNEL_ID       = config.logChannelId       || '1509832784880074782';
+const NOWPAYMENTS_API      = 'https://api.nowpayments.io/v1';
+const WEBHOOK_URL          = config.webhookUrl         || '';
+
+// ─── DATA FILES ───────────────────────────────────────────────────────────────
+function loadJSON(file, fallback) {
+    if (fs.existsSync(file)) {
+        try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+        catch { return fallback; }
+    }
+    return fallback;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; min-height: 100vh; }
-
-/* LOGIN */
-#login-screen {
-  display: flex; align-items: center; justify-content: center; min-height: 100vh;
-  background: radial-gradient(ellipse at 30% 40%, #1a1a3a 0%, var(--bg) 60%);
-}
-.login-box {
-  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
-  padding: 48px 40px; width: 360px; text-align: center;
-}
-.login-box h1 { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--accent); margin-bottom: 8px; }
-.login-box p { color: var(--muted); font-size: 13px; margin-bottom: 32px; }
-input[type=password], input[type=text], input[type=color], textarea, select {
-  width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text);
-  border-radius: 8px; padding: 12px 16px; font-family: inherit; font-size: 14px; outline: none;
-  transition: border .2s;
-}
-input:focus, textarea:focus, select:focus { border-color: var(--accent); }
-textarea { resize: vertical; min-height: 80px; }
-.btn {
-  display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
-  border-radius: 8px; border: none; cursor: pointer; font-family: inherit;
-  font-size: 13px; font-weight: 500; transition: all .2s; text-decoration: none;
-}
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: #4752c4; }
-.btn-success { background: var(--accent2); color: #000; }
-.btn-success:hover { opacity: .85; }
-.btn-danger { background: var(--accent4); color: #fff; }
-.btn-danger:hover { opacity: .85; }
-.btn-ghost { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
-.btn-ghost:hover { border-color: var(--accent); }
-.btn-full { width: 100%; justify-content: center; margin-top: 12px; }
-.login-error { color: var(--accent4); font-size: 12px; margin-top: 8px; display: none; }
-
-/* LAYOUT */
-#app { display: none; }
-.sidebar {
-  position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
-  background: var(--bg2); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column;
-}
-.sidebar-logo {
-  padding: 24px 20px; border-bottom: 1px solid var(--border);
-  font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; color: var(--accent);
-}
-.sidebar-logo span { color: var(--text); font-size: 12px; font-weight: 400; display: block; margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
-.nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 12px 20px;
-  color: var(--muted); cursor: pointer; transition: all .2s; font-size: 13px; border-left: 3px solid transparent;
-}
-.nav-item:hover { color: var(--text); background: var(--bg3); }
-.nav-item.active { color: var(--accent); background: rgba(88,101,242,.08); border-left-color: var(--accent); }
-.nav-icon { font-size: 16px; width: 20px; text-align: center; }
-.sidebar-footer { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
-.status-dot { width: 8px; height: 8px; background: var(--accent2); border-radius: 50%; display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
-.main { margin-left: 220px; padding: 32px; min-height: 100vh; }
-.page { display: none; }
-.page.active { display: block; }
-.page-title { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; margin-bottom: 24px; }
-
-/* STATS */
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
-.stat-card {
-  background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
-  position: relative; overflow: hidden;
-}
-.stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent-c, var(--accent)); }
-.stat-card.green { --accent-c: var(--accent2); }
-.stat-card.yellow { --accent-c: var(--accent3); }
-.stat-card.red { --accent-c: var(--accent4); }
-.stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
-.stat-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; }
-
-/* LOGS */
-.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.filter-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg3); color: var(--muted); cursor: pointer; font-size: 12px; font-family: inherit; transition: all .2s; }
-.filter-btn.active, .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
-.log-table { width: 100%; border-collapse: collapse; }
-.log-table th { text-align: left; padding: 10px 12px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border); }
-.log-table td { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: top; }
-.log-table tr:hover td { background: var(--bg3); }
-.log-type { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-.type-BAN { background: rgba(237,66,69,.2); color: #ed4245; }
-.type-TIMEOUT { background: rgba(254,231,92,.2); color: #fee75c; }
-.type-TICKET_OPEN { background: rgba(88,101,242,.2); color: #5865f2; }
-.type-TICKET_CLOSE { background: rgba(235,69,158,.2); color: #eb459e; }
-.type-PAYMENT { background: rgba(87,242,135,.2); color: #57f287; }
-.type-KEY_REDEEM { background: rgba(87,242,135,.2); color: #57f287; }
-.type-WHITELIST { background: rgba(87,242,135,.2); color: #57f287; }
-.type-UNWHITELIST { background: rgba(237,66,69,.2); color: #ed4245; }
-.type-LINK_DELETE { background: rgba(255,107,53,.2); color: #ff6b35; }
-.type-GIVEAWAY { background: rgba(255,215,0,.2); color: #ffd700; }
-.log-details { color: var(--muted); font-size: 11px; line-height: 1.6; }
-.log-details strong { color: var(--text); }
-.pagination { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
-.table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: auto; }
-
-/* SEND MSG */
-.send-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.form-group { margin-bottom: 16px; }
-.form-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: .06em; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
-.card-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 20px; }
-.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.toggle-row:last-child { border-bottom: none; }
-.toggle-label { font-size: 13px; }
-.toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
-.toggle input { opacity: 0; width: 0; height: 0; }
-.slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg3); border-radius: 22px; transition: .3s; border: 1px solid var(--border); }
-.slider:before { position: absolute; content: ''; height: 14px; width: 14px; left: 3px; bottom: 3px; background: var(--muted); border-radius: 50%; transition: .3s; }
-input:checked + .slider { background: var(--accent); border-color: var(--accent); }
-input:checked + .slider:before { transform: translateX(18px); background: #fff; }
-.embed-preview { background: var(--bg3); border-left: 4px solid var(--accent); border-radius: 4px; padding: 12px; margin-top: 8px; display: none; }
-.embed-preview.show { display: block; }
-.preview-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
-.preview-desc { font-size: 13px; color: var(--muted); }
-.success-toast { position: fixed; bottom: 24px; right: 24px; background: var(--accent2); color: #000; padding: 12px 20px; border-radius: 8px; font-size: 13px; transform: translateY(60px); opacity: 0; transition: all .3s; z-index: 100; pointer-events: none; }
-.success-toast.show { transform: translateY(0); opacity: 1; }
-</style>
-</head>
-<body>
-
-<!-- LOGIN -->
-<div id="login-screen">
-  <div class="login-box">
-    <h1>⚙️ GEEK HUB</h1>
-    <p>Bot Dashboard · Admin Only</p>
-    <div class="form-group">
-      <input type="password" id="pw-input" placeholder="Passwort eingeben..." />
-    </div>
-    <button class="btn btn-primary btn-full" onclick="doLogin()">Einloggen</button>
-    <div class="login-error" id="login-error">❌ Falsches Passwort</div>
-  </div>
-</div>
-
-<!-- APP -->
-<div id="app">
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      ⚙️ GEEK HUB
-      <span>Bot Dashboard</span>
-    </div>
-    <nav style="padding: 8px 0;">
-      <div class="nav-item active" onclick="showPage('overview')"><span class="nav-icon">📊</span> Overview</div>
-      <div class="nav-item" onclick="showPage('logs')"><span class="nav-icon">📋</span> Logs</div>
-      <div class="nav-item" onclick="showPage('send')"><span class="nav-icon">✉️</span> Nachricht senden</div>
-    </nav>
-    <div class="sidebar-footer">
-      <span class="status-dot"></span><span style="font-size:12px;color:var(--muted)">Bot online</span>
-    </div>
-  </aside>
-
-  <main class="main">
-    <!-- OVERVIEW -->
-    <div class="page active" id="page-overview">
-      <div class="page-title">📊 Overview</div>
-      <div class="stats-grid">
-        <div class="stat-card"><div class="stat-label">Aktive Abos</div><div class="stat-value" id="stat-subs">—</div></div>
-        <div class="stat-card green"><div class="stat-label">Whitelisted</div><div class="stat-value" id="stat-wl">—</div></div>
-        <div class="stat-card yellow"><div class="stat-label">Gesamt Keys</div><div class="stat-value" id="stat-keys">—</div></div>
-        <div class="stat-card red"><div class="stat-label">Log Einträge</div><div class="stat-value" id="stat-logs">—</div></div>
-      </div>
-      <div class="card">
-        <div class="card-title">🖥️ Server</div>
-        <div id="guilds-list" style="color:var(--muted);font-size:13px;">Laden...</div>
-      </div>
-    </div>
-
-    <!-- LOGS -->
-    <div class="page" id="page-logs">
-      <div class="page-title">📋 Logs</div>
-      <div class="filters" id="log-filters">
-        <button class="filter-btn active" onclick="setFilter('')">Alle</button>
-        <button class="filter-btn" onclick="setFilter('BAN')">Ban</button>
-        <button class="filter-btn" onclick="setFilter('TIMEOUT')">Timeout</button>
-        <button class="filter-btn" onclick="setFilter('TICKET_OPEN')">Ticket Open</button>
-        <button class="filter-btn" onclick="setFilter('TICKET_CLOSE')">Ticket Close</button>
-        <button class="filter-btn" onclick="setFilter('PAYMENT')">Payment</button>
-        <button class="filter-btn" onclick="setFilter('LINK_DELETE')">Link</button>
-        <button class="filter-btn" onclick="setFilter('GIVEAWAY')">Giveaway</button>
-      </div>
-      <div class="table-wrap">
-        <table class="log-table">
-          <thead><tr><th>Zeit</th><th>Typ</th><th>Details</th></tr></thead>
-          <tbody id="logs-tbody"><tr><td colspan="3" style="color:var(--muted);text-align:center;padding:24px;">Laden...</td></tr></tbody>
-        </table>
-      </div>
-      <div class="pagination" id="pagination"></div>
-    </div>
-
-    <!-- SEND -->
-    <div class="page" id="page-send">
-      <div class="page-title">✉️ Nachricht senden</div>
-      <div class="send-grid">
-        <div>
-          <div class="card">
-            <div class="card-title">📡 Ziel</div>
-            <div class="form-group">
-              <label class="form-label">Server</label>
-              <select id="guild-select" onchange="loadChannels()">
-                <option value="">Server laden...</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Channel</label>
-              <select id="channel-select">
-                <option value="">Zuerst Server wählen</option>
-              </select>
-            </div>
-            <div class="card-title" style="margin-top:8px;">💬 Inhalt</div>
-            <div class="form-group">
-              <label class="form-label">Nachricht</label>
-              <textarea id="msg-content" placeholder="Nachricht eingeben..." oninput="updatePreview()"></textarea>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">@everyone</span>
-              <label class="toggle"><input type="checkbox" id="chk-everyone"><span class="slider"></span></label>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">@here</span>
-              <label class="toggle"><input type="checkbox" id="chk-here"><span class="slider"></span></label>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">Als Embed senden</span>
-              <label class="toggle"><input type="checkbox" id="chk-embed" onchange="toggleEmbed()"><span class="slider"></span></label>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div class="card" id="embed-card" style="display:none;">
-            <div class="card-title">🎨 Embed Einstellungen</div>
-            <div class="form-group">
-              <label class="form-label">Titel</label>
-              <input type="text" id="embed-title" placeholder="Embed Titel..." oninput="updatePreview()">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Beschreibung</label>
-              <textarea id="embed-desc" placeholder="Embed Beschreibung..." oninput="updatePreview()"></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Footer</label>
-              <input type="text" id="embed-footer" placeholder="Footer Text...">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Farbe</label>
-              <input type="color" id="embed-color" value="#5865F2" style="height:42px;padding:4px 8px;" oninput="updatePreview()">
-            </div>
-            <div class="card-title" style="margin-top:8px;">👁️ Vorschau</div>
-            <div class="embed-preview show" id="embed-preview">
-              <div class="preview-title" id="preview-title">Titel</div>
-              <div class="preview-desc" id="preview-desc">Beschreibung...</div>
-            </div>
-          </div>
-          <div class="card" id="simple-preview-card">
-            <div class="card-title">👁️ Vorschau</div>
-            <div id="simple-preview" style="background:var(--bg3);border-radius:8px;padding:12px;font-size:13px;color:var(--muted);min-height:60px;">
-              Nachricht eingeben...
-            </div>
-          </div>
-          <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="sendMessage()">📤 Absenden</button>
-        </div>
-      </div>
-    </div>
-  </main>
-</div>
-
-<div class="success-toast" id="toast"></div>
-
-<script>
-// Railway deployed backend URL - WICHTIG: Ändere dies zu deiner Railway URL!
-// Nach dem Deployment auf Railway: https://dein-projekt.up.railway.app
-const API_BASE_URL = '';
-
-let token = '';
-let logPage = 0;
-let logFilter = '';
-
-function api(url, opts = {}) {
-  // Wenn API_BASE_URL leer ist, verwende relative URL (für lokales Testen)
-  const baseUrl = API_BASE_URL || '';
-  return fetch(baseUrl + url, { 
-    headers: { 'Authorization': token, 'Content-Type': 'application/json', ...(opts.headers||{}) }, 
-    ...opts 
-  }).then(r => r.json());
+function saveJSON(file, data) {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-async function doLogin() {
-  const pw = document.getElementById('pw-input').value;
-  const res = await api('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({password:pw}) });
-  const data = await res;
-  if (data.ok) {
-    token = data.token;
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    loadOverview();
-    loadGuilds();
-  } else {
-    document.getElementById('login-error').style.display = 'block';
-  }
+let keysData         = loadJSON('./keys.json',      { keys: [], subscriptions: [] });
+let whitelistedUsers = loadJSON('./whitelist.json', { users: [] });
+let logsData         = loadJSON('./logs.json',      { logs: [] });
+let giveawaysData    = loadJSON('./giveaways.json', { giveaways: [] });
+
+if (!keysData.keys)             keysData.keys = [];
+if (!keysData.subscriptions)    keysData.subscriptions = [];
+if (!whitelistedUsers.users)    whitelistedUsers.users = [];
+if (!logsData.logs)             logsData.logs = [];
+if (!giveawaysData.giveaways)   giveawaysData.giveaways = [];
+
+function saveKeys()      { saveJSON('./keys.json', keysData); }
+function saveWhitelist() { saveJSON('./whitelist.json', whitelistedUsers); }
+function saveLogs()      { saveJSON('./logs.json', logsData); }
+function saveGiveaways() { saveJSON('./giveaways.json', giveawaysData); }
+
+// ─── LOGGING HELPER ───────────────────────────────────────────────────────────
+async function logAction(client, type, data) {
+    const entry = {
+        id: crypto.randomBytes(6).toString('hex'),
+        type,
+        timestamp: Date.now(),
+        ...data
+    };
+    logsData.logs.unshift(entry);
+    if (logsData.logs.length > 2000) logsData.logs = logsData.logs.slice(0, 2000);
+    saveLogs();
+
+    try {
+        const channel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+        if (!channel) return;
+
+        const colors = {
+            BAN: '#ED4245', TIMEOUT: '#FEE75C', UNBAN: '#57F287',
+            KICK: '#FF6B35', TICKET_OPEN: '#5865F2', TICKET_CLOSE: '#EB459E',
+            PAYMENT: '#00FF00', KEY_REDEEM: '#57F287', WHITELIST: '#57F287',
+            UNWHITELIST: '#ED4245', LINK_DELETE: '#FF6B35', GIVEAWAY: '#FFD700',
+            MOD_MSG: '#5865F2'
+        };
+
+        const embed = new EmbedBuilder()
+            .setColor(colors[type] || '#5865F2')
+            .setTitle(`📋 Log: ${type}`)
+            .setTimestamp(entry.timestamp);
+
+        for (const [k, v] of Object.entries(data)) {
+            if (v !== undefined && v !== null) {
+                embed.addFields({ name: k, value: String(v).slice(0, 1024), inline: true });
+            }
+        }
+
+        await channel.send({ embeds: [embed] });
+    } catch (e) {
+        console.error('Log channel error:', e.message);
+    }
 }
 
-document.getElementById('pw-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+// ─── CLIENT ───────────────────────────────────────────────────────────────────
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildModeration
+    ]
+});
 
-function showPage(p) {
-  document.querySelectorAll('.page').forEach(x => x.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
-  document.getElementById('page-'+p).classList.add('active');
-  if (event && event.currentTarget) event.currentTarget.classList.add('active');
-  if (p === 'logs') loadLogs();
-  if (p === 'overview') loadOverview();
+const activeTickets   = new Map();
+const paymentSessions = new Map();
+const paymentMonitors = new Map();
+
+// ─── SLASH COMMANDS ───────────────────────────────────────────────────────────
+const commands = [
+    new SlashCommandBuilder()
+        .setName('redeem')
+        .setDescription('Redeem a key')
+        .addStringOption(o => o.setName('key').setDescription('Your key').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('check')
+        .setDescription('Check your subscription'),
+    new SlashCommandBuilder()
+        .setName('givekey')
+        .setDescription('Give a key (Admin)')
+        .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+        .addStringOption(o => o.setName('duration').setDescription('Duration').setRequired(true)
+            .addChoices({ name: '1 Month', value: '1month' }, { name: 'Lifetime', value: 'lifetime' })),
+    new SlashCommandBuilder()
+        .setName('stock')
+        .setDescription('Check stock (placeholder)'),
+    new SlashCommandBuilder()
+        .setName('whitelist')
+        .setDescription('Check your whitelist status'),
+    new SlashCommandBuilder()
+        .setName('unwhitelist')
+        .setDescription('Remove whitelist (Admin)')
+        .addUserOption(o => o.setName('user').setDescription('User').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('removecooldown')
+        .setDescription('Remove cooldown (Admin)')
+        .addUserOption(o => o.setName('user').setDescription('User').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('giveaway')
+        .setDescription('Start a giveaway (Admin)')
+        .addStringOption(o => o.setName('prize').setDescription('Prize').setRequired(true))
+        .addStringOption(o => o.setName('duration').setDescription('Duration e.g. 1h, 30m, 1d').setRequired(true))
+        .addIntegerOption(o => o.setName('winners').setDescription('Number of winners').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('gend')
+        .setDescription('End a giveaway early (Admin)')
+        .addStringOption(o => o.setName('messageid').setDescription('Message ID of giveaway').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('reroll')
+        .setDescription('Reroll a giveaway (Admin)')
+        .addStringOption(o => o.setName('messageid').setDescription('Message ID of giveaway').setRequired(true)),
+];
+
+// ─── READY ────────────────────────────────────────────────────────────────────
+client.once('ready', async () => {
+    console.log(`✅ Bot online as ${client.user.tag}`);
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    try {
+        for (const guild of client.guilds.cache.values()) {
+            await rest.put(Routes.applicationGuildCommands(client.user.id, guild.id), { body: commands });
+        }
+        console.log('✅ Slash commands registered');
+    } catch (e) { console.error('Command reg error:', e); }
+
+    setInterval(checkExpiredSubscriptions, 60000);
+    setInterval(checkGiveaways, 10000);
+});
+
+// ─── MESSAGE CREATE ───────────────────────────────────────────────────────────
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    const isInvite = /discord\.(gg|com\/invite)\/[a-zA-Z0-9]+/i.test(message.content);
+    const isLink = /https?:\/\/(?!tenor\.com|giphy\.com|media\.tenor\.com|media\.giphy\.com)[^\s]+/i.test(message.content);
+
+    const memberRoles = message.member?.roles?.cache;
+    const hasModRole  = memberRoles?.has(MOD_ROLE_ID)   || false;
+    const hasAdmRole  = memberRoles?.has(ADMIN_ROLE_ID)  || false;
+    const isAdmin     = ADMIN_USER_IDS.includes(message.author.id);
+
+    if ((isInvite || isLink) && !hasModRole && !hasAdmRole && !isAdmin) {
+        try {
+            await message.delete();
+            await message.member.timeout(10 * 60 * 1000, 'Auto: link/invite detected');
+
+            const dmEmbed = new EmbedBuilder()
+                .setColor('#ED4245')
+                .setTitle('🔇 Du wurdest getimed out')
+                .setDescription(`**Grund:** Unerlaubter Link / Discord Invite\n**Dauer:** 10 Minuten`)
+                .setTimestamp();
+            await message.author.send({ embeds: [dmEmbed] }).catch(() => {});
+
+            await logAction(client, 'LINK_DELETE', {
+                'User': `${message.author.tag} (${message.author.id})`,
+                'Channel': `#${message.channel.name}`,
+                'Content': message.content.slice(0, 500),
+                'Action': 'Deleted + 10min timeout'
+            });
+        } catch (e) { console.error('Anti-link error:', e); }
+        return;
+    }
+
+    if (message.content.startsWith('!ticket')) {
+        const sub = message.content.split(' ')[1]?.toLowerCase();
+        if (sub === 'support') return createTicketPanel(message, 'support');
+        if (sub === 'buy')     return createTicketPanel(message, 'buy');
+        return message.reply('❌ Use: `!ticket support` or `!ticket buy`');
+    }
+
+    if (message.content.startsWith('!request')) {
+        return createRequestPanel(message);
+    }
+
+    if (message.content.startsWith('.timeout ')) {
+        if (!hasModRole && !hasAdmRole && !isAdmin) return;
+        const parts = message.content.split(' ');
+        const targetId = parts[1];
+        const reason = parts.slice(2).join(' ') || 'No reason provided';
+        try {
+            const target = await message.guild.members.fetch(targetId).catch(() => null);
+            if (!target) return message.reply('❌ User not found.');
+            await target.timeout(10 * 60 * 1000, reason);
+            message.reply(`✅ <@${targetId}> got a 10min timeout. Reason: ${reason}`);
+            await logAction(client, 'TIMEOUT', {
+                'Moderator': `${message.author.tag}`,
+                'Target': `${target.user.tag} (${targetId})`,
+                'Reason': reason, 'Duration': '10 minutes'
+            });
+        } catch (e) { message.reply('❌ ' + e.message); }
+        return;
+    }
+
+    if (message.content.startsWith('.ban ')) {
+        if (!hasAdmRole && !isAdmin) return;
+        const parts = message.content.split(' ');
+        const targetId = parts[1];
+        const reason = parts.slice(2).join(' ') || 'Banned by authorized user';
+        try {
+            const target = await message.guild.members.fetch(targetId).catch(() => null);
+            const targetUser = target?.user || await client.users.fetch(targetId).catch(() => null);
+            if (!targetUser) return message.reply('❌ User not found.');
+
+            const banEmbed = new EmbedBuilder()
+                .setColor('#ED4245')
+                .setTitle('🔨 You have been banned')
+                .addFields(
+                    { name: 'Server', value: message.guild.name, inline: true },
+                    { name: 'Reason', value: reason, inline: true },
+                    { name: 'Want to appeal?', value: 'Open a ticket to appeal your ban.' }
+                )
+                .setTimestamp();
+            await targetUser.send({ embeds: [banEmbed] }).catch(() => {});
+
+            await message.guild.members.ban(targetId, { reason });
+            message.reply(`✅ <@${targetId}> has been banned.`);
+            await logAction(client, 'BAN', {
+                'Moderator': `${message.author.tag}`,
+                'Target': `${targetUser.tag} (${targetId})`,
+                'Reason': reason
+            });
+        } catch (e) { message.reply('❌ ' + e.message); }
+        return;
+    }
+});
+
+// ─── GUILD MEMBER ADD (Appeal auto-ticket) ────────────────────────────────────
+client.on('guildMemberAdd', async (member) => {
+    try {
+        const category = member.guild.channels.cache.get(APPEAL_CATEGORY_ID);
+        if (!category) return;
+
+        const permissionOverwrites = [
+            { id: member.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+            { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+            { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
+        ];
+
+        const ticketChannel = await member.guild.channels.create({
+            name: `appeal-${member.user.username}`,
+            type: ChannelType.GuildText,
+            parent: APPEAL_CATEGORY_ID,
+            permissionOverwrites
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('📋 Ban Appeal')
+            .setDescription(`Welcome ${member}, your appeal ticket has been created!\n\nPlease describe your situation and why you should be unbanned.\nA staff member will review your appeal as soon as possible.`)
+            .setTimestamp();
+
+        const closeBtn = new ButtonBuilder()
+            .setCustomId(`close_ticket_${ticketChannel.id}`)
+            .setLabel('🔒 Close Ticket')
+            .setStyle(ButtonStyle.Danger);
+
+        await ticketChannel.send({ content: `${member} <@&${MOD_ROLE_ID}> <@&${ADMIN_ROLE_ID}>`, embeds: [embed], components: [new ActionRowBuilder().addComponents(closeBtn)] });
+
+        await logAction(client, 'TICKET_OPEN', {
+            'User': `${member.user.tag} (${member.id})`,
+            'Type': 'Ban Appeal (auto)',
+            'Channel': ticketChannel.name
+        });
+    } catch (e) { console.error('Appeal ticket error:', e); }
+});
+
+// ─── INTERACTIONS ─────────────────────────────────────────────────────────────
+client.on('interactionCreate', async (interaction) => {
+    try {
+        if (interaction.isButton()) {
+            if (interaction.customId.startsWith('create_ticket_')) return handleTicketCreation(interaction);
+            if (interaction.customId.startsWith('close_ticket_'))  return handleTicketClose(interaction);
+            if (interaction.customId.startsWith('check_payment_')) return checkPaymentStatus(interaction, interaction.customId.replace('check_payment_', ''));
+            if (interaction.customId === 'giveaway_enter')          return handleGiveawayEnter(interaction);
+        }
+        if (interaction.isStringSelectMenu() && interaction.customId === 'duration_select') {
+            return handleDurationSelect(interaction);
+        }
+        if (interaction.isModalSubmit() && interaction.customId === 'request_modal') {
+            return handleRequestModal(interaction);
+        }
+        if (interaction.isChatInputCommand()) {
+            const h = {
+                redeem:         handleRedeemCommand,
+                check:          handleCheckCommand,
+                givekey:        handleGiveKeyCommand,
+                stock:          handleStockCommand,
+                whitelist:      handleWhitelistCommand,
+                unwhitelist:    handleUnwhitelistCommand,
+                removecooldown: handleRemoveCooldownCommand,
+                giveaway:       handleGiveawayCommand,
+                gend:           handleGiveawayEnd,
+                reroll:         handleGiveawayReroll,
+            };
+            if (h[interaction.commandName]) return h[interaction.commandName](interaction);
+        }
+    } catch (e) {
+        console.error('Interaction error:', e);
+        const msg = '❌ An error occurred.';
+        if (interaction.deferred || interaction.replied) await interaction.editReply({ content: msg }).catch(() => {});
+        else await interaction.reply({ content: msg, flags: 64 }).catch(() => {});
+    }
+});
+
+// ─── TICKET PANELS ────────────────────────────────────────────────────────────
+async function createTicketPanel(message, type) {
+    const data = {
+        support: { color: '#5865F2', title: '🎫 Support Ticket System', desc: 'Klicke den Button um ein Support Ticket zu öffnen.\nUnser Team hilft dir so schnell wie möglich.' },
+        buy:     { color: '#FEE75C', title: '💰 Buy Ticket System',     desc: 'Klicke den Button um ein Kauf-Ticket zu öffnen.\nWähle dein Paket und erhalte sofort Zahlungsinformationen.' }
+    };
+    const d = data[type];
+    const embed = new EmbedBuilder().setColor(d.color).setTitle(d.title).setDescription(d.desc).setTimestamp();
+    const btn = new ButtonBuilder()
+        .setCustomId(`create_ticket_${type}`)
+        .setLabel(type === 'support' ? '🎫 Open Ticket' : '💰 Buy Now')
+        .setStyle(type === 'buy' ? ButtonStyle.Success : ButtonStyle.Primary);
+    await message.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
+    await message.delete().catch(() => {});
 }
 
-async function loadOverview() {
-  const stats = await api('/api/stats');
-  document.getElementById('stat-subs').textContent = stats.activeSubs;
-  document.getElementById('stat-wl').textContent = stats.activeWL;
-  document.getElementById('stat-keys').textContent = stats.totalKeys;
-  document.getElementById('stat-logs').textContent = stats.totalLogs;
-
-  const guilds = await api('/api/guilds');
-  const el = document.getElementById('guilds-list');
-  if (!guilds.length) { el.textContent = 'Keine Server gefunden'; return; }
-  el.innerHTML = guilds.map(g => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
-    <span style="color:var(--text);">${g.name}</span>
-    <span style="color:var(--muted);">${g.memberCount} Members · ID: ${g.id}</span>
-  </div>`).join('');
+async function createRequestPanel(message) {
+    const embed = new EmbedBuilder()
+        .setColor('#57F287')
+        .setTitle('🎮 Game Request')
+        .setDescription('Klicke den Button und schlage ein Spiel vor!\nUnser Team wird deinen Vorschlag prüfen.')
+        .setTimestamp();
+    const btn = new ButtonBuilder()
+        .setCustomId('create_ticket_request')
+        .setLabel('🎮 Spiel vorschlagen')
+        .setStyle(ButtonStyle.Success);
+    await message.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
+    await message.delete().catch(() => {});
 }
 
-async function loadLogs() {
-  const data = await api(`/api/logs?page=${logPage}&type=${logFilter}`);
-  const tbody = document.getElementById('logs-tbody');
-  if (!data.logs || !data.logs.length) {
-    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:24px;">Keine Logs gefunden</td></tr>';
-    return;
-  }
-  tbody.innerHTML = data.logs.map(l => {
-    const details = Object.entries(l).filter(([k]) => !['id','type','timestamp'].includes(k))
-      .map(([k,v]) => `<strong>${k}:</strong> ${String(v).slice(0,200)}`).join('<br>');
-    return `<tr>
-      <td style="white-space:nowrap;color:var(--muted);">${new Date(l.timestamp).toLocaleString('de-DE')}</td>
-      <td><span class="log-type type-${l.type}">${l.type}</span></td>
-      <td><div class="log-details">${details}</div></td>
-    </tr>`;
-  }).join('');
+// ─── TICKET CREATION ──────────────────────────────────────────────────────────
+async function handleTicketCreation(interaction) {
+    const type = interaction.customId.replace('create_ticket_', '');
+    const userId = interaction.user.id;
 
-  const pages = Math.ceil(data.total / 50);
-  const pg = document.getElementById('pagination');
-  pg.innerHTML = `<button class="btn btn-ghost" onclick="changePage(-1)" ${logPage===0?'disabled':''}>← Zurück</button>
-    <span style="font-size:12px;color:var(--muted);">Seite ${logPage+1} / ${pages || 1} (${data.total} total)</span>
-    <button class="btn btn-ghost" onclick="changePage(1)" ${logPage>=pages-1?'disabled':''}>Weiter →</button>`;
+    if (type === 'request') {
+        const modal = new ModalBuilder()
+            .setCustomId('request_modal')
+            .setTitle('🎮 Game Request');
+        const input = new TextInputBuilder()
+            .setCustomId('game_name')
+            .setLabel('Welches Spiel möchtest du vorschlagen?')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('z.B. Minecraft, GTA V, Apex Legends...')
+            .setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        return interaction.showModal(modal);
+    }
+
+    const existing = Array.from(activeTickets.values()).find(t => t.userId === userId && t.type === type);
+    if (existing) return interaction.reply({ content: '❌ Du hast bereits ein offenes Ticket dieses Typs!', flags: 64 });
+
+    await interaction.deferReply({ flags: 64 });
+
+    const catId = type === 'support' ? SUPPORT_CATEGORY_ID : BUY_CATEGORY_ID;
+    const category = interaction.guild.channels.cache.get(catId);
+    if (!category) return interaction.editReply({ content: '❌ Kategorie nicht gefunden!' });
+
+    const num = Math.floor(Math.random() * 9000) + 1000;
+    const channelName = `ticket-${type}-${num}`;
+
+    const permissionOverwrites = [
+        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+        { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] },
+        { id: MOD_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+        { id: ADMIN_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    ];
+
+    const ticketChannel = await interaction.guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: catId,
+        permissionOverwrites
+    });
+
+    activeTickets.set(ticketChannel.id, { userId, type, createdAt: Date.now() });
+
+    const colors = { support: '#5865F2', buy: '#FEE75C' };
+    const welcomeEmbed = new EmbedBuilder()
+        .setColor(colors[type])
+        .setTitle(type === 'support' ? '🎫 Support Ticket' : '💰 Kauf Ticket')
+        .setDescription(`Willkommen ${interaction.user}!\n\n${type === 'support' ? 'Beschreibe dein Problem und ein Teammitglied wird dir helfen.' : 'Wähle dein gewünschtes Paket aus.'}`)
+        .setFooter({ text: `Ticket #${num}` })
+        .setTimestamp();
+
+    const closeBtn = new ButtonBuilder()
+        .setCustomId(`close_ticket_${ticketChannel.id}`)
+        .setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Danger);
+
+    let pingContent = `${interaction.user} `;
+    if (type === 'support') pingContent += `<@&${MOD_ROLE_ID}> <@&${ADMIN_ROLE_ID}>`;
+    if (type === 'buy')     pingContent += `<@&${BUY_PING_ROLE_ID}>`;
+
+    await ticketChannel.send({ content: pingContent, embeds: [welcomeEmbed], components: [new ActionRowBuilder().addComponents(closeBtn)] });
+
+    if (type === 'buy') await handleBuyTicketAutoResponse(ticketChannel, interaction.user);
+
+    await interaction.editReply({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}` });
+
+    await logAction(client, 'TICKET_OPEN', {
+        'User': `${interaction.user.tag} (${interaction.user.id})`,
+        'Type': type, 'Channel': channelName
+    });
 }
 
-function changePage(d) { logPage = Math.max(0, logPage+d); loadLogs(); }
-function setFilter(t) {
-  logFilter = t; logPage = 0;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase() === (t||'alle').toLowerCase() || (t==='' && b.textContent==='Alle')));
-  loadLogs();
+async function handleRequestModal(interaction) {
+    const gameName = interaction.fields.getTextInputValue('game_name');
+    const userId = interaction.user.id;
+
+    await interaction.deferReply({ flags: 64 });
+
+    const category = interaction.guild.channels.cache.get(REQUEST_CATEGORY_ID);
+    if (!category) return interaction.editReply({ content: '❌ Kategorie nicht gefunden!' });
+
+    const num = Math.floor(Math.random() * 9000) + 1000;
+    const channelName = `request-${interaction.user.username}-${num}`;
+
+    const permissionOverwrites = [
+        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+        { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] },
+        { id: MOD_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+        { id: ADMIN_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+    ];
+
+    const ticketChannel = await interaction.guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: REQUEST_CATEGORY_ID,
+        permissionOverwrites
+    });
+
+    activeTickets.set(ticketChannel.id, { userId, type: 'request', createdAt: Date.now() });
+
+    const embed = new EmbedBuilder()
+        .setColor('#57F287')
+        .setTitle('🎮 Game Request')
+        .setDescription(`${interaction.user} möchte ein Spiel vorschlagen!`)
+        .addFields({ name: '🎮 Gewünschtes Spiel', value: gameName })
+        .setFooter({ text: `Request #${num}` })
+        .setTimestamp();
+
+    const closeBtn = new ButtonBuilder()
+        .setCustomId(`close_ticket_${ticketChannel.id}`)
+        .setLabel('🔒 Close').setStyle(ButtonStyle.Danger);
+
+    await ticketChannel.send({
+        content: `${interaction.user} <@&${MOD_ROLE_ID}> <@&${ADMIN_ROLE_ID}>`,
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(closeBtn)]
+    });
+
+    await interaction.editReply({ content: `✅ Dein Game Request wurde erstellt: ${ticketChannel}` });
+
+    await logAction(client, 'TICKET_OPEN', {
+        'User': `${interaction.user.tag}`,
+        'Type': 'Game Request',
+        'Game': gameName,
+        'Channel': channelName
+    });
 }
 
-async function loadGuilds() {
-  const guilds = await api('/api/guilds');
-  const sel = document.getElementById('guild-select');
-  sel.innerHTML = '<option value="">Server wählen...</option>' + guilds.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+async function handleBuyTicketAutoResponse(channel, user) {
+    const embed = new EmbedBuilder()
+        .setColor('#FEE75C')
+        .setTitle('⏱️ Paket auswählen')
+        .setDescription('Wähle dein gewünschtes Paket:\n\n**1 Month** — $5.00\n**Lifetime** — $15.00')
+        .setFooter({ text: 'Zahlungsinformationen werden sofort nach der Auswahl angezeigt' })
+        .setTimestamp();
+
+    const select = new StringSelectMenuBuilder()
+        .setCustomId('duration_select')
+        .setPlaceholder('Paket auswählen')
+        .addOptions([
+            { label: '1 Month — $5.00', description: '1 Monat Zugang', value: '1month_5', emoji: '📅' },
+            { label: 'Lifetime — $15.00', description: 'Lebenslanger Zugang', value: 'lifetime_15', emoji: '♾️' },
+        ]);
+
+    await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
 }
 
-async function loadChannels() {
-  const guildId = document.getElementById('guild-select').value;
-  if (!guildId) return;
-  const channels = await api(`/api/channels/${guildId}`);
-  const sel = document.getElementById('channel-select');
-  sel.innerHTML = '<option value="">Channel wählen...</option>' + channels.map(c => `<option value="${c.id}">#${c.name}</option>`).join('');
+async function handleDurationSelect(interaction) {
+    const [duration, priceStr] = interaction.values[0].split('_');
+    const priceUSD = parseFloat(priceStr);
+    const durationText = duration === '1month' ? '1 Month' : 'Lifetime';
+    const durationMs   = duration === '1month' ? 30 * 24 * 60 * 60 * 1000 : 100 * 365 * 24 * 60 * 60 * 1000;
+
+    await interaction.deferReply();
+
+    try {
+        const priceRes = await axios.get(`${NOWPAYMENTS_API}/estimate`, {
+            params: { amount: priceUSD, currency_from: 'usd', currency_to: 'ltc' },
+            headers: { 'x-api-key': process.env.NOWPAYMENTS_API_KEY }
+        });
+        const ltcAmount = priceRes.data.estimated_amount;
+
+        const payRes = await axios.post(`${NOWPAYMENTS_API}/payment`, {
+            price_amount: priceUSD, price_currency: 'usd', pay_currency: 'ltc',
+            order_id: `ticket-${interaction.channel.id}-${Date.now()}`,
+            order_description: `${durationText} - ${interaction.user.tag}`
+        }, { headers: { 'x-api-key': process.env.NOWPAYMENTS_API_KEY, 'Content-Type': 'application/json' } });
+
+        const payment = payRes.data;
+        paymentSessions.set(interaction.channel.id, {
+            paymentId: payment.payment_id, userId: interaction.user.id,
+            amount: ltcAmount, address: payment.pay_address,
+            duration, durationMs, priceUSD, guildId: interaction.guild.id, createdAt: Date.now()
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('💰 Litecoin Zahlung')
+            .setDescription(`**Paket:** ${durationText}\n**Preis:** $${priceUSD.toFixed(2)} USD\n\nBitte sende **${ltcAmount} LTC** an folgende Adresse:`)
+            .addFields(
+                { name: '📍 LTC Adresse', value: `\`\`\`${payment.pay_address}\`\`\``, inline: false },
+                { name: '💵 Betrag', value: `**${ltcAmount} LTC**`, inline: true },
+                { name: '💲 USD', value: `$${priceUSD.toFixed(2)}`, inline: true },
+                { name: '📊 Status', value: '⏳ Warte auf Zahlung...', inline: false }
+            )
+            .setFooter({ text: 'Genau diesen Betrag senden!' }).setTimestamp();
+
+        const checkBtn = new ButtonBuilder()
+            .setCustomId(`check_payment_${payment.payment_id}`)
+            .setLabel('🔄 Zahlung prüfen').setStyle(ButtonStyle.Primary);
+
+        await interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(checkBtn)] });
+        startPaymentMonitoring(payment.payment_id, interaction.channel.id);
+
+        await logAction(client, 'PAYMENT', {
+            'User': `${interaction.user.tag}`,
+            'Package': durationText,
+            'Amount': `$${priceUSD}`,
+            'LTC': `${ltcAmount}`,
+            'PaymentID': payment.payment_id
+        });
+    } catch (e) {
+        console.error('Payment error:', e.response?.data || e.message);
+        await interaction.editReply({ content: '❌ Fehler beim Erstellen der Zahlung. Bitte einen Admin kontaktieren.' });
+    }
 }
 
-function toggleEmbed() {
-  const on = document.getElementById('chk-embed').checked;
-  document.getElementById('embed-card').style.display = on ? 'block' : 'none';
-  document.getElementById('simple-preview-card').style.display = on ? 'none' : 'block';
-  updatePreview();
+async function checkPaymentStatus(interaction, paymentId) {
+    await interaction.deferReply({ flags: 64 });
+    try {
+        const res = await axios.get(`${NOWPAYMENTS_API}/payment/${paymentId}`, {
+            headers: { 'x-api-key': process.env.NOWPAYMENTS_API_KEY }
+        });
+        const status = res.data.payment_status;
+        await interaction.editReply({ content: `**Status:** ${status}` });
+        if (status === 'finished' || status === 'confirmed') {
+            const session = paymentSessions.get(interaction.channel.id);
+            if (session) await processSuccessfulPayment(interaction.channel, session);
+        }
+    } catch (e) {
+        await interaction.editReply({ content: '❌ Fehler beim Prüfen.' });
+    }
 }
 
-function updatePreview() {
-  const on = document.getElementById('chk-embed').checked;
-  if (on) {
-    const title = document.getElementById('embed-title').value || 'Titel';
-    const desc = document.getElementById('embed-desc').value || 'Beschreibung...';
-    const color = document.getElementById('embed-color').value;
-    document.getElementById('embed-preview').style.borderLeftColor = color;
-    document.getElementById('preview-title').textContent = title;
-    document.getElementById('preview-desc').textContent = desc;
-  } else {
-    const content = document.getElementById('msg-content').value || 'Nachricht eingeben...';
-    document.getElementById('simple-preview').textContent = content;
-  }
+function startPaymentMonitoring(paymentId, channelId) {
+    if (paymentMonitors.has(paymentId)) clearInterval(paymentMonitors.get(paymentId));
+    const iv = setInterval(async () => {
+        try {
+            const res = await axios.get(`${NOWPAYMENTS_API}/payment/${paymentId}`, {
+                headers: { 'x-api-key': process.env.NOWPAYMENTS_API_KEY }
+            });
+            const status = res.data.payment_status;
+            if (status === 'finished' || status === 'confirmed') {
+                clearInterval(iv); paymentMonitors.delete(paymentId);
+                const ch = client.channels.cache.get(channelId);
+                const session = paymentSessions.get(channelId);
+                if (ch && session) await processSuccessfulPayment(ch, session);
+            } else if (status === 'failed' || status === 'expired') {
+                clearInterval(iv); paymentMonitors.delete(paymentId);
+            }
+        } catch {}
+    }, 15000);
+    paymentMonitors.set(paymentId, iv);
+    setTimeout(() => { if (paymentMonitors.has(paymentId)) { clearInterval(paymentMonitors.get(paymentId)); paymentMonitors.delete(paymentId); } }, 3600000);
 }
 
-async function sendMessage() {
-  const guildId = document.getElementById('guild-select').value;
-  const channelId = document.getElementById('channel-select').value;
-  if (!guildId || !channelId) return showToast('❌ Server und Channel wählen!', true);
+async function processSuccessfulPayment(channel, sessionData) {
+    const key = generateKey();
+    const expiresAt = Date.now() + sessionData.durationMs;
+    keysData.keys.push({ key, userId: sessionData.userId, guildId: sessionData.guildId, duration: sessionData.duration, durationMs: sessionData.durationMs, expiresAt, createdAt: Date.now(), redeemed: false });
+    saveKeys();
 
-  const useEmbed = document.getElementById('chk-embed').checked;
-  const body = {
-    guildId, channelId,
-    content: document.getElementById('msg-content').value,
-    everyone: document.getElementById('chk-everyone').checked,
-    here: document.getElementById('chk-here').checked,
-    useEmbed,
-    embedData: useEmbed ? {
-      title: document.getElementById('embed-title').value,
-      description: document.getElementById('embed-desc').value,
-      footer: document.getElementById('embed-footer').value,
-      color: document.getElementById('embed-color').value
-    } : null
-  };
+    const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Zahlung bestätigt!').setDescription('Dein Schlüssel wurde per DM gesendet.').setTimestamp();
+    await channel.send({ embeds: [embed] });
 
-  const res = await api('/api/send', { method: 'POST', body: JSON.stringify(body) });
-  if (res.ok) showToast('✅ Nachricht gesendet!');
-  else showToast('❌ Fehler: ' + res.error, true);
+    try {
+        const user = await client.users.fetch(sessionData.userId);
+        const keyEmbed = new EmbedBuilder()
+            .setColor('#00FF00').setTitle('🔑 Dein Key')
+            .setDescription(`\`\`\`${key}\`\`\`\n\nBenutze \`/redeem ${key}\` um den Key einzulösen.`)
+            .addFields(
+                { name: '⏱️ Paket', value: sessionData.duration === '1month' ? '1 Month' : 'Lifetime', inline: true },
+                { name: '📅 Gültig bis', value: `<t:${Math.floor(expiresAt / 1000)}:F>`, inline: true }
+            ).setTimestamp();
+        await user.send({ embeds: [keyEmbed] });
+    } catch {
+        await channel.send({ content: `<@${sessionData.userId}> Konnte keine DM senden. Key: \`\`\`${key}\`\`\`` });
+    }
+
+    await logAction(client, 'PAYMENT', {
+        'User': sessionData.userId, 'Package': sessionData.duration,
+        'Price': `$${sessionData.priceUSD}`, 'Key': key, 'Status': 'CONFIRMED'
+    });
+    paymentSessions.delete(channel.id);
 }
 
-function showToast(msg, err=false) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.background = err ? 'var(--accent4)' : 'var(--accent2)';
-  t.style.color = err ? '#fff' : '#000';
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
+function generateKey() {
+    return crypto.randomBytes(16).toString('hex').toUpperCase().match(/.{1,4}/g).join('-');
 }
-</script>
-</body>
-</html>
+
+async function handleRedeemCommand(interaction) {
+    const keyInput = interaction.options.getString('key');
+    const userId = interaction.user.id;
+    const guildId = interaction.guild.id;
+    await interaction.deferReply({ flags: 64 });
+
+    const keyData = keysData.keys.find(k => k.key === keyInput && k.guildId === guildId);
+    if (!keyData)       return interaction.editReply({ content: '❌ Ungültiger Key.' });
+    if (keyData.redeemed) return interaction.editReply({ content: '❌ Dieser Key wurde bereits eingelöst.' });
+    if (Date.now() > keyData.expiresAt) return interaction.editReply({ content: '❌ Dieser Key ist abgelaufen.' });
+
+    const existingSub = keysData.subscriptions.find(s => s.userId === userId && s.guildId === guildId && s.active);
+    if (existingSub) return interaction.editReply({ content: '❌ Du hast bereits ein aktives Abonnement.' });
+
+    keyData.redeemed = true; keyData.redeemedBy = userId; keyData.redeemedAt = Date.now();
+    const expiresAt = Date.now() + keyData.durationMs;
+    keysData.subscriptions.push({ userId, guildId, key: keyInput, startedAt: Date.now(), expiresAt, duration: keyData.duration, active: true });
+    saveKeys();
+
+    const existing = whitelistedUsers.users.find(u => u.userId === userId && u.guildId === guildId);
+    if (!existing) whitelistedUsers.users.push({ userId, guildId, username: interaction.user.tag, whitelistedAt: Date.now(), expiresAt, duration: keyData.duration, active: true });
+    else { existing.expiresAt = expiresAt; existing.active = true; existing.duration = keyData.duration; }
+    saveWhitelist();
+
+    const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Key eingelöst!')
+        .addFields({ name: '📅 Läuft ab', value: `<t:${Math.floor(expiresAt / 1000)}:R>`, inline: true }).setTimestamp();
+    await interaction.editReply({ embeds: [embed] });
+
+    await logAction(client, 'KEY_REDEEM', { 'User': `${interaction.user.tag}`, 'Key': keyInput, 'Package': keyData.duration });
+}
+
+async function handleCheckCommand(interaction) {
+    const userId = interaction.user.id;
+    const guildId = interaction.guild.id;
+    await interaction.deferReply({ flags: 64 });
+    const sub = keysData.subscriptions.find(s => s.userId === userId && s.guildId === guildId && s.active);
+    if (!sub) return interaction.editReply({ content: '❌ Kein aktives Abo. Kaufe einen Key mit dem Ticket System.' });
+    const tl = sub.expiresAt - Date.now();
+    if (tl <= 0) { sub.active = false; saveKeys(); return interaction.editReply({ content: '❌ Dein Abo ist abgelaufen.' }); }
+    const embed = new EmbedBuilder().setColor('#5865F2').setTitle('⏱️ Abo Info')
+        .addFields(
+            { name: '📅 Läuft ab', value: `<t:${Math.floor(sub.expiresAt / 1000)}:F>`, inline: false },
+            { name: '⏳ Verbleibend', value: `${Math.floor(tl/3600000)}h ${Math.floor((tl%3600000)/60000)}m`, inline: true },
+            { name: '📦 Paket', value: sub.duration === '1month' ? '1 Month' : 'Lifetime', inline: true }
+        ).setTimestamp();
+    await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleWhitelistCommand(interaction) {
+    const userId = interaction.user.id;
+    const guildId = interaction.guild.id;
+    await interaction.deferReply({ flags: 64 });
+    const entry = whitelistedUsers.users.find(u => u.userId === userId && u.guildId === guildId && u.active);
+    if (!entry) return interaction.editReply({ content: '❌ Du bist nicht gewhitelistet.' });
+    const tl = entry.expiresAt - Date.now();
+    if (tl <= 0) { entry.active = false; saveWhitelist(); return interaction.editReply({ content: '❌ Deine Whitelist ist abgelaufen.' }); }
+    const embed = new EmbedBuilder().setColor('#00FF00').setTitle('✅ Whitelist Status')
+        .addFields(
+            { name: '📅 Läuft ab', value: `<t:${Math.floor(entry.expiresAt / 1000)}:F>`, inline: false },
+            { name: '⏳ Verbleibend', value: `${Math.floor(tl/3600000)}h ${Math.floor((tl%3600000)/60000)}m`, inline: true }
+        ).setTimestamp();
+    await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleUnwhitelistCommand(interaction) {
+    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    const target = interaction.options.getUser('user');
+    await interaction.deferReply({ flags: 64 });
+    const entry = whitelistedUsers.users.find(u => u.userId === target.id && u.guildId === interaction.guild.id);
+    if (!entry?.active) return interaction.editReply({ content: `❌ ${target} ist nicht gewhitelistet.` });
+    entry.active = false; saveWhitelist();
+    const sub = keysData.subscriptions.find(s => s.userId === target.id && s.guildId === interaction.guild.id && s.active);
+    if (sub) { sub.active = false; saveKeys(); }
+    await interaction.editReply({ content: `✅ ${target} wurde von der Whitelist entfernt.` });
+    await target.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('❌ Whitelist entfernt').setDescription('Deine Whitelist wurde von einem Admin entfernt.').setTimestamp()] }).catch(() => {});
+    await logAction(client, 'UNWHITELIST', { 'Admin': interaction.user.tag, 'Target': target.tag });
+}
+
+async function handleGiveKeyCommand(interaction) {
+    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    const target = interaction.options.getUser('user');
+    const duration = interaction.options.getString('duration');
+    await interaction.deferReply({ flags: 64 });
+    const durationMs = duration === '1month' ? 30*24*60*60*1000 : 100*365*24*60*60*1000;
+    const key = generateKey();
+    const expiresAt = Date.now() + durationMs;
+    keysData.keys.push({ key, userId: target.id, guildId: interaction.guild.id, duration, durationMs, expiresAt, createdAt: Date.now(), redeemed: false, givenBy: interaction.user.id });
+    saveKeys();
+    try {
+        await target.send({ embeds: [new EmbedBuilder().setColor('#00FF00').setTitle('🎁 Key erhalten!')
+            .setDescription(`\`\`\`${key}\`\`\`\n\nBenutze \`/redeem ${key}\``)
+            .addFields({ name: '⏱️ Paket', value: duration === '1month' ? '1 Month' : 'Lifetime', inline: true }).setTimestamp()] });
+    } catch {}
+    await interaction.editReply({ content: `✅ Key an ${target} gesendet: \`${key}\`` });
+    await logAction(client, 'WHITELIST', { 'Admin': interaction.user.tag, 'Target': target.tag, 'Key': key, 'Duration': duration });
+}
+
+async function handleStockCommand(interaction) {
+    await interaction.deferReply({ flags: 64 });
+    const embed = new EmbedBuilder().setColor('#5865F2').setTitle('📊 Stock').setDescription('No generator active. Use tickets to purchase access.').setTimestamp();
+    await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleRemoveCooldownCommand(interaction) {
+    if (!ADMIN_USER_IDS.includes(interaction.user.id)) return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    await interaction.deferReply({ flags: 64 });
+    await interaction.editReply({ content: '✅ Cooldowns sind derzeit nicht aktiv.' });
+}
+
+async function handleTicketClose(interaction) {
+    const channelId = interaction.customId.replace('close_ticket_', '');
+    const channel = interaction.guild.channels.cache.get(channelId);
+    if (!channel) return interaction.reply({ content: '❌ Ticket channel nicht gefunden.', flags: 64 });
+
+    await interaction.reply({ content: '🔒 Ticket wird geschlossen...', flags: 64 });
+    await channel.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('🔒 Ticket geschlossen').setDescription(`Geschlossen von ${interaction.user}`).setTimestamp()] });
+
+    await logAction(client, 'TICKET_CLOSE', {
+        'Closed by': `${interaction.user.tag}`,
+        'Channel': channel.name,
+        'Type': activeTickets.get(channelId)?.type || 'unknown'
+    });
+
+    activeTickets.delete(channelId);
+    paymentSessions.delete(channelId);
+
+    setTimeout(() => channel.delete().catch(() => {}), 5000);
+}
+
+async function checkExpiredSubscriptions() {
+    const now = Date.now(); let changed = false;
+    for (const sub of keysData.subscriptions) {
+        if (sub.active && sub.expiresAt <= now) {
+            sub.active = false; changed = true;
+            const wl = whitelistedUsers.users.find(u => u.userId === sub.userId && u.guildId === sub.guildId);
+            if (wl) { wl.active = false; saveWhitelist(); }
+            try {
+                const user = await client.users.fetch(sub.userId);
+                await user.send({ embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('⏰ Abo abgelaufen').setDescription('Dein Abo ist abgelaufen.').setTimestamp()] }).catch(() => {});
+            } catch {}
+        }
+    }
+    if (changed) saveKeys();
+}
+
+function parseDuration(str) {
+    const match = str.match(/^(\d+)(s|m|h|d)$/);
+    if (!match) return null;
+    const v = parseInt(match[1]);
+    const mult = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+    return v * mult[match[2]];
+}
+
+async function handleGiveawayCommand(interaction) {
+    if (!ADMIN_USER_IDS.includes(interaction.user.id) &&
+        !interaction.member.roles.cache.has(MOD_ROLE_ID) &&
+        !interaction.member.roles.cache.has(ADMIN_ROLE_ID))
+        return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+
+    const prize    = interaction.options.getString('prize');
+    const durStr   = interaction.options.getString('duration');
+    const winners  = interaction.options.getInteger('winners');
+    const durMs    = parseDuration(durStr);
+    if (!durMs) return interaction.reply({ content: '❌ Ungültige Dauer. z.B. 1h, 30m, 1d', flags: 64 });
+
+    await interaction.deferReply();
+    const endsAt = Date.now() + durMs;
+
+    const embed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle('🎉 GIVEAWAY')
+        .setDescription(`**Preis:** ${prize}\n\nReagiere mit 🎉 um teilzunehmen!\n\n**Gewinner:** ${winners}\n**Endet:** <t:${Math.floor(endsAt/1000)}:R>`)
+        .setFooter({ text: `${winners} winner(s)` })
+        .setTimestamp(endsAt);
+
+    const btn = new ButtonBuilder().setCustomId('giveaway_enter').setLabel('🎉 Teilnehmen').setStyle(ButtonStyle.Primary);
+    const msg = await interaction.editReply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
+
+    const giveaway = { messageId: msg.id, channelId: interaction.channel.id, guildId: interaction.guild.id, prize, winners, endsAt, participants: [], ended: false, hostedBy: interaction.user.id };
+    giveawaysData.giveaways.push(giveaway);
+    saveGiveaways();
+
+    await logAction(client, 'GIVEAWAY', { 'Host': interaction.user.tag, 'Prize': prize, 'Winners': winners, 'Duration': durStr });
+}
+
+async function handleGiveawayEnter(interaction) {
+    const giveaway = giveawaysData.giveaways.find(g => g.messageId === interaction.message.id && !g.ended);
+    if (!giveaway) return interaction.reply({ content: '❌ Dieses Giveaway ist beendet.', flags: 64 });
+    if (giveaway.participants.includes(interaction.user.id)) return interaction.reply({ content: '✅ Du nimmst bereits teil!', flags: 64 });
+    giveaway.participants.push(interaction.user.id);
+    saveGiveaways();
+    await interaction.reply({ content: '✅ Du nimmst jetzt am Giveaway teil! Viel Glück! 🎉', flags: 64 });
+}
+
+async function endGiveaway(giveaway) {
+    giveaway.ended = true; saveGiveaways();
+    try {
+        const channel = await client.channels.fetch(giveaway.channelId);
+        const winners = [];
+        const pool = [...giveaway.participants];
+        const count = Math.min(giveaway.winners, pool.length);
+        for (let i = 0; i < count; i++) {
+            const idx = Math.floor(Math.random() * pool.length);
+            winners.push(pool.splice(idx, 1)[0]);
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor('#FFD700')
+            .setTitle('🎉 GIVEAWAY BEENDET')
+            .setDescription(`**Preis:** ${giveaway.prize}\n\n**Gewinner:** ${winners.length ? winners.map(w => `<@${w}>`).join(', ') : 'Keine Teilnehmer'}`)
+            .setTimestamp();
+
+        await channel.send({ embeds: [embed], content: winners.length ? `🎉 Glückwunsch ${winners.map(w=>`<@${w}>`).join(' ')}!` : 'Kein Gewinner.' });
+    } catch (e) { console.error('End giveaway error:', e); }
+}
+
+async function handleGiveawayEnd(interaction) {
+    if (!ADMIN_USER_IDS.includes(interaction.user.id) && !interaction.member.roles.cache.has(ADMIN_ROLE_ID))
+        return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    const msgId = interaction.options.getString('messageid');
+    const gw = giveawaysData.giveaways.find(g => g.messageId === msgId && !g.ended);
+    if (!gw) return interaction.reply({ content: '❌ Giveaway nicht gefunden.', flags: 64 });
+    await endGiveaway(gw);
+    await interaction.reply({ content: '✅ Giveaway beendet.', flags: 64 });
+}
+
+async function handleGiveawayReroll(interaction) {
+    if (!ADMIN_USER_IDS.includes(interaction.user.id) && !interaction.member.roles.cache.has(ADMIN_ROLE_ID))
+        return interaction.reply({ content: '❌ Keine Berechtigung.', flags: 64 });
+    const msgId = interaction.options.getString('messageid');
+    const gw = giveawaysData.giveaways.find(g => g.messageId === msgId);
+    if (!gw) return interaction.reply({ content: '❌ Giveaway nicht gefunden.', flags: 64 });
+    gw.ended = false; await endGiveaway(gw);
+    await interaction.reply({ content: '✅ Reroll durchgeführt.', flags: 64 });
+}
+
+async function checkGiveaways() {
+    const now = Date.now();
+    for (const gw of giveawaysData.giveaways) {
+        if (!gw.ended && gw.endsAt <= now) await endGiveaway(gw);
+    }
+}
+
+// ─── EXPRESS WEB DASHBOARD ────────────────────────────────────────────────────
+const appExpress = express();
+
+appExpress.use(express.json());
+appExpress.use(express.static(__dirname)); // <-- GEÄNDERT: Serviert Dateien aus Hauptverzeichnis
+
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin123';
+
+appExpress.post('/api/auth', (req, res) => {
+    if (req.body.password === DASHBOARD_PASSWORD) res.json({ ok: true, token: Buffer.from(DASHBOARD_PASSWORD).toString('base64') });
+    else res.status(401).json({ ok: false });
+});
+
+function authMiddleware(req, res, next) {
+    const token = req.headers['authorization'];
+    if (token === Buffer.from(DASHBOARD_PASSWORD).toString('base64')) return next();
+    res.status(401).json({ error: 'Unauthorized' });
+}
+
+appExpress.get('/api/logs', authMiddleware, (req, res) => {
+    const page = parseInt(req.query.page) || 0;
+    const limit = 50;
+    const type = req.query.type;
+    let logs = logsData.logs;
+    if (type) logs = logs.filter(l => l.type === type);
+    res.json({ logs: logs.slice(page * limit, (page+1) * limit), total: logs.length });
+});
+
+appExpress.get('/api/stats', authMiddleware, (req, res) => {
+    const activeSubs = keysData.subscriptions.filter(s => s.active).length;
+    const totalKeys  = keysData.keys.length;
+    const totalLogs  = logsData.logs.length;
+    const activeWL   = whitelistedUsers.users.filter(u => u.active).length;
+    res.json({ activeSubs, totalKeys, totalLogs, activeWL });
+});
+
+appExpress.get('/api/guilds', authMiddleware, (req, res) => {
+    const guilds = client.guilds.cache.map(g => ({ id: g.id, name: g.name, memberCount: g.memberCount }));
+    res.json(guilds);
+});
+
+appExpress.get('/api/channels/:guildId', authMiddleware, async (req, res) => {
+    try {
+        const guild = client.guilds.cache.get(req.params.guildId);
+        if (!guild) return res.status(404).json({ error: 'Guild not found' });
+        const channels = guild.channels.cache
+            .filter(c => c.type === ChannelType.GuildText)
+            .map(c => ({ id: c.id, name: c.name }));
+        res.json(channels);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+appExpress.post('/api/send', authMiddleware, async (req, res) => {
+    try {
+        const { guildId, channelId, content, useEmbed, embedData, everyone, here } = req.body;
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) return res.status(404).json({ error: 'Guild not found' });
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+        let msgContent = content || '';
+        if (everyone) msgContent = '@everyone ' + msgContent;
+        if (here) msgContent = '@here ' + msgContent;
+
+        if (useEmbed && embedData) {
+            const embed = new EmbedBuilder()
+                .setColor(embedData.color || '#5865F2')
+                .setTitle(embedData.title || '')
+                .setDescription(embedData.description || '');
+            if (embedData.footer) embed.setFooter({ text: embedData.footer });
+            await channel.send({ content: msgContent || undefined, embeds: [embed], allowedMentions: { parse: ['everyone', 'here'] } });
+        } else {
+            await channel.send({ content: msgContent, allowedMentions: { parse: ['everyone', 'here'] } });
+        }
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Fallback für alle anderen Routen - sendet index.html
+appExpress.get('*', (req, res) => {
+    const indexPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('index.html not found. Please make sure index.html exists in the root directory.');
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+appExpress.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard auf Port ${PORT}`));
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+client.login(process.env.DISCORD_TOKEN);
